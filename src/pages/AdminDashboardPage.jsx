@@ -19,6 +19,7 @@ import {
   - suppression multiple des concours
   - bannissement / débannissement d'un utilisateur
   - affichage détaillé des profils utilisateurs
+  - ajout d'une recherche / filtre sur les utilisateurs
   - accès réservé aux admins côté interface
 
   IMPORTANT :
@@ -74,6 +75,10 @@ function getUserDisplayName(userItem) {
   return userItem?.email || "Utilisateur";
 }
 
+function normalizeSearchValue(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
   const { isAdmin, loading, user } = useAuth();
@@ -94,6 +99,14 @@ export default function AdminDashboardPage() {
   const [loadingData, setLoadingData] = useState(true);
   const [busyAction, setBusyAction] = useState(false);
   const [message, setMessage] = useState("");
+
+  /*
+    MODIFICATION ADMIN :
+    état des filtres utilisateurs.
+  */
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState("all");
+  const [userStatusFilter, setUserStatusFilter] = useState("all");
 
   async function loadAdminData() {
     try {
@@ -139,6 +152,49 @@ export default function AdminDashboardPage() {
     [users]
   );
 
+  /*
+    MODIFICATION ADMIN :
+    liste filtrée des utilisateurs selon recherche + rôle + statut.
+  */
+  const filteredUsers = useMemo(() => {
+    const normalizedSearch = normalizeSearchValue(userSearch);
+
+    return users.filter((userItem) => {
+      const role = String(userItem?.role || "user").toLowerCase();
+      const matchesRole =
+        userRoleFilter === "all" ? true : role === userRoleFilter;
+
+      const matchesStatus =
+        userStatusFilter === "all"
+          ? true
+          : userStatusFilter === "banned"
+          ? Boolean(userItem?.is_banned)
+          : !userItem?.is_banned;
+
+      if (!matchesRole || !matchesStatus) {
+        return false;
+      }
+
+      if (!normalizedSearch) {
+        return true;
+      }
+
+      const searchableText = [
+        userItem?.pseudo,
+        userItem?.email,
+        userItem?.nom,
+        userItem?.prenom,
+        userItem?.club,
+        userItem?.code_postal
+      ]
+        .map((value) => String(value || ""))
+        .join(" ")
+        .toLowerCase();
+
+      return searchableText.includes(normalizedSearch);
+    });
+  }, [users, userSearch, userRoleFilter, userStatusFilter]);
+
   function handleToggleCatchSelection(catchId) {
     setSelectedCatchIds((prev) =>
       prev.includes(catchId)
@@ -171,6 +227,16 @@ export default function AdminDashboardPage() {
     }
 
     setSelectedCompetitionIds(competitions.map((item) => item.id));
+  }
+
+  /*
+    MODIFICATION ADMIN :
+    remise à zéro des filtres utilisateurs.
+  */
+  function handleResetUserFilters() {
+    setUserSearch("");
+    setUserRoleFilter("all");
+    setUserStatusFilter("all");
   }
 
   async function handleDeleteSelectedCatches() {
@@ -414,13 +480,109 @@ export default function AdminDashboardPage() {
 
       {!loadingData && activeTab === TAB_USERS ? (
         <div className="card">
-          <h3 className="card-title">Utilisateurs ({users.length})</h3>
+          <h3 className="card-title">Utilisateurs ({filteredUsers.length})</h3>
           <p className="form-helper" style={{ marginBottom: 16 }}>
             Comptes bannis actuellement : {selectedUsersCount}
           </p>
 
+          {/* MODIFICATION ADMIN :
+              zone de recherche / filtres utilisateurs
+          */}
+          <div
+            className="card"
+            style={{
+              margin: "0 0 16px 0",
+              background: "#f8fafc"
+            }}
+          >
+            <h4 className="card-title" style={{ marginBottom: 12 }}>
+              Recherche et filtres
+            </h4>
+
+            <div
+              style={{
+                display: "grid",
+                gap: 12,
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))"
+              }}
+            >
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" htmlFor="admin-user-search">
+                  Recherche
+                </label>
+                <input
+                  id="admin-user-search"
+                  type="text"
+                  className="form-input"
+                  placeholder="Pseudo, email, nom, prénom, club, code postal..."
+                  value={userSearch}
+                  onChange={(event) => setUserSearch(event.target.value)}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" htmlFor="admin-user-role-filter">
+                  Rôle
+                </label>
+                <select
+                  id="admin-user-role-filter"
+                  className="form-select"
+                  value={userRoleFilter}
+                  onChange={(event) => setUserRoleFilter(event.target.value)}
+                >
+                  <option value="all">Tous</option>
+                  <option value="admin">Admin</option>
+                  <option value="user">User</option>
+                </select>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label
+                  className="form-label"
+                  htmlFor="admin-user-status-filter"
+                >
+                  Statut
+                </label>
+                <select
+                  id="admin-user-status-filter"
+                  className="form-select"
+                  value={userStatusFilter}
+                  onChange={(event) => setUserStatusFilter(event.target.value)}
+                >
+                  <option value="all">Tous</option>
+                  <option value="active">Actifs</option>
+                  <option value="banned">Bannis</option>
+                </select>
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: 12,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap"
+              }}
+            >
+              <p className="form-helper" style={{ margin: 0 }}>
+                Résultats : {filteredUsers.length} / {users.length}
+              </p>
+
+              <button
+                type="button"
+                className="secondary-button"
+                style={{ width: "auto" }}
+                onClick={handleResetUserFilters}
+              >
+                Réinitialiser les filtres
+              </button>
+            </div>
+          </div>
+
           <div style={{ display: "grid", gap: 12 }}>
-            {users.map((userItem) => (
+            {filteredUsers.map((userItem) => (
               <div
                 key={userItem.id}
                 className="card"
@@ -491,6 +653,14 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
             ))}
+
+            {filteredUsers.length === 0 ? (
+              <div className="card" style={{ margin: 0 }}>
+                <p className="card-text" style={{ margin: 0 }}>
+                  Aucun utilisateur ne correspond aux filtres actuels.
+                </p>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
