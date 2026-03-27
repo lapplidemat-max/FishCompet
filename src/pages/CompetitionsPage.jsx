@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
 import {
   createCompetition,
   fetchUserCompetitions,
@@ -23,6 +22,11 @@ import {
   NOUVELLE MODIFICATION :
   - formulaire de création de concours masqué par défaut
   - ajout d'un bouton afficher / masquer la création
+
+  MODIFICATION ADMIN :
+  - retrait du mode admin global sur cette page
+  - la page redevient une page utilisateur classique
+  - la gestion globale des concours reste centralisée sur /admin
 */
 
 function toDateTimeLocalString(date) {
@@ -42,7 +46,7 @@ function getDefaultEndDateTimeLocal() {
 }
 
 export default function CompetitionsPage() {
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
 
   const [competitions, setCompetitions] = useState([]);
   const [newCompetitionName, setNewCompetitionName] = useState("");
@@ -65,28 +69,15 @@ export default function CompetitionsPage() {
   async function loadCompetitions() {
     try {
       if (!user?.id) {
+        setCompetitions([]);
         return;
       }
 
       /*
         MODIFICATION ADMIN :
-        - un admin charge tous les concours
-        - un utilisateur standard charge ses concours / concours rejoints
+        retour au comportement normal :
+        l'utilisateur charge uniquement ses concours / concours rejoints.
       */
-      if (isAdmin) {
-        const { data, error } = await supabase
-          .from("competitions")
-          .select("*")
-          .order("created_at", { ascending: false });
-
-        if (error) {
-          throw error;
-        }
-
-        setCompetitions(data || []);
-        return;
-      }
-
       const data = await fetchUserCompetitions(user.id);
       setCompetitions(data);
     } catch (error) {
@@ -98,7 +89,7 @@ export default function CompetitionsPage() {
     if (user?.id) {
       loadCompetitions();
     }
-  }, [user?.id, isAdmin]);
+  }, [user?.id]);
 
   async function handleCreateCompetition(event) {
     event.preventDefault();
@@ -180,56 +171,6 @@ export default function CompetitionsPage() {
     }
   }
 
-
-  /*
-    MODIFICATION ADMIN :
-    suppression complète d’un concours avec nettoyage des tables de liaison.
-  */
-  async function handleDeleteCompetition(competitionId) {
-    const confirmed = window.confirm(
-      "Voulez-vous vraiment supprimer ce concours ?"
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      setMessage("");
-
-      const { error: deleteCompetitionCatchesError } = await supabase
-        .from("competition_catches")
-        .delete()
-        .eq("competition_id", competitionId);
-
-      if (deleteCompetitionCatchesError) {
-        throw deleteCompetitionCatchesError;
-      }
-
-      const { error: deleteParticipantsError } = await supabase
-        .from("competition_participants")
-        .delete()
-        .eq("competition_id", competitionId);
-
-      if (deleteParticipantsError) {
-        throw deleteParticipantsError;
-      }
-
-      const { error: deleteCompetitionError } = await supabase
-        .from("competitions")
-        .delete()
-        .eq("id", competitionId);
-
-      if (deleteCompetitionError) {
-        throw deleteCompetitionError;
-      }
-
-      await loadCompetitions();
-    } catch (error) {
-      setMessage(error.message || "Erreur lors de la suppression du concours.");
-    }
-  }
-
   function getResultsVisibilityLabel(value) {
     if (value === "hidden") {
       return "Résultats masqués";
@@ -277,15 +218,6 @@ export default function CompetitionsPage() {
         Crée un concours, rejoins-en un avec un code, puis consulte son
         classement.
       </p>
-
-      {isAdmin ? (
-        <div className="card">
-          <p className="card-text">
-            Mode admin actif : cette page affiche tous les concours et autorise
-            leur suppression.
-          </p>
-        </div>
-      ) : null}
 
       <div className="card">
         <div
@@ -498,12 +430,6 @@ export default function CompetitionsPage() {
                   {new Date(competition.created_at).toLocaleString("fr-FR")}
                 </p>
 
-                {isAdmin ? (
-                  <p className="list-item__meta">
-                    Créateur : {competition.creator_id || "Non renseigné"}
-                  </p>
-                ) : null}
-
                 <div
                   style={{
                     marginTop: "12px",
@@ -524,17 +450,6 @@ export default function CompetitionsPage() {
                   >
                     Voir le détail
                   </Link>
-
-                  {isAdmin ? (
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => handleDeleteCompetition(competition.id)}
-                      style={{ flex: 1 }}
-                    >
-                      Supprimer
-                    </button>
-                  ) : null}
                 </div>
               </article>
             ))}
