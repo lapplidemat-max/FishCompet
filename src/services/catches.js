@@ -10,8 +10,9 @@ import { supabase } from "../lib/supabase";
   - upload photo
 
   MODIFICATION IMPORTANTE :
-  - alignement du nom du bucket Storage avec Supabase :
-    CATCH-PHOTOS
+  - correction du nom du bucket Storage Supabase
+  - le bucket réel est : catch-photos
+  - Supabase est sensible à la casse
 */
 
 export async function fetchUserCatches(userId) {
@@ -45,11 +46,13 @@ export async function uploadCatchPhoto({ userId, file }) {
 
   /*
     MODIFICATION IMPORTANTE :
-    le bucket utilisé doit correspondre exactement
-    au nom du bucket Supabase.
+    le nom du bucket doit correspondre exactement
+    au bucket visible dans Supabase : catch-photos
   */
+  const bucketName = "catch-photos";
+
   const { error: uploadError } = await supabase.storage
-    .from("CATCH-PHOTOS")
+    .from(bucketName)
     .upload(fileName, file, {
       cacheControl: "3600",
       upsert: false
@@ -60,7 +63,7 @@ export async function uploadCatchPhoto({ userId, file }) {
   }
 
   const { data } = supabase.storage
-    .from("CATCH-PHOTOS")
+    .from(bucketName)
     .getPublicUrl(fileName);
 
   return data?.publicUrl || null;
