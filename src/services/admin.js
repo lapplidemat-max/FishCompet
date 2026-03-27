@@ -73,13 +73,30 @@ export async function fetchAdminGlobalStats() {
 
 /*
   MODIFICATION ADMIN :
-  récupération de tous les utilisateurs
+  récupération complète des profils utilisateurs
 */
 export async function adminFetchAllUsers() {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, pseudo, email, nom, prenom, role, plan, is_banned, banned_at, created_at"
+      `
+      id,
+      email,
+      pseudo,
+      nom,
+      prenom,
+      date_naissance,
+      code_postal,
+      sexe,
+      categorie,
+      club,
+      plan,
+      role,
+      is_banned,
+      banned_at,
+      created_at,
+      updated_at
+    `
     )
     .order("created_at", { ascending: false });
 

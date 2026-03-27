@@ -18,6 +18,7 @@ import {
   - suppression multiple des captures
   - suppression multiple des concours
   - bannissement / débannissement d'un utilisateur
+  - affichage détaillé des profils utilisateurs
   - accès réservé aux admins côté interface
 
   IMPORTANT :
@@ -43,6 +44,20 @@ function formatDateTime(value) {
   }
 
   return date.toLocaleString("fr-FR");
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString("fr-FR");
 }
 
 function getUserDisplayName(userItem) {
@@ -119,7 +134,10 @@ export default function AdminDashboardPage() {
 
   const canRenderAdmin = !loading && isAdmin;
 
-  const selectedUsersCount = useMemo(() => users.filter((item) => item.is_banned).length, [users]);
+  const selectedUsersCount = useMemo(
+    () => users.filter((item) => item.is_banned).length,
+    [users]
+  );
 
   function handleToggleCatchSelection(catchId) {
     setSelectedCatchIds((prev) =>
@@ -241,7 +259,9 @@ export default function AdminDashboardPage() {
       );
       await loadAdminData();
     } catch (error) {
-      setMessage(error.message || "Erreur lors de la mise à jour du bannissement.");
+      setMessage(
+        error.message || "Erreur lors de la mise à jour du bannissement."
+      );
     } finally {
       setBusyAction(false);
     }
@@ -294,28 +314,38 @@ export default function AdminDashboardPage() {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             type="button"
-            className={activeTab === TAB_STATS ? "primary-button" : "secondary-button"}
+            className={
+              activeTab === TAB_STATS ? "primary-button" : "secondary-button"
+            }
             onClick={() => setActiveTab(TAB_STATS)}
           >
             Vue globale
           </button>
           <button
             type="button"
-            className={activeTab === TAB_USERS ? "primary-button" : "secondary-button"}
+            className={
+              activeTab === TAB_USERS ? "primary-button" : "secondary-button"
+            }
             onClick={() => setActiveTab(TAB_USERS)}
           >
             Utilisateurs
           </button>
           <button
             type="button"
-            className={activeTab === TAB_CATCHES ? "primary-button" : "secondary-button"}
+            className={
+              activeTab === TAB_CATCHES ? "primary-button" : "secondary-button"
+            }
             onClick={() => setActiveTab(TAB_CATCHES)}
           >
             Captures
           </button>
           <button
             type="button"
-            className={activeTab === TAB_COMPETITIONS ? "primary-button" : "secondary-button"}
+            className={
+              activeTab === TAB_COMPETITIONS
+                ? "primary-button"
+                : "secondary-button"
+            }
             onClick={() => setActiveTab(TAB_COMPETITIONS)}
           >
             Concours
@@ -338,21 +368,43 @@ export default function AdminDashboardPage() {
               et {stats.bannedUsersCount} compte(s) banni(s).
             </p>
             <p className="card-text">
-              {stats.catchesCount} capture(s) enregistrée(s) et {stats.competitionsCount} concours.
+              {stats.catchesCount} capture(s) enregistrée(s) et{" "}
+              {stats.competitionsCount} concours.
             </p>
           </div>
 
           <div className="card">
             <h3 className="card-title">Raccourcis admin</h3>
-            <p className="card-text">Utilise les onglets ci-dessus pour gérer rapidement l'application.</p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-              <button type="button" className="secondary-button" onClick={() => setActiveTab(TAB_USERS)}>
+            <p className="card-text">
+              Utilise les onglets ci-dessus pour gérer rapidement l'application.
+            </p>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                marginTop: 12
+              }}
+            >
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setActiveTab(TAB_USERS)}
+              >
                 Gérer les utilisateurs
               </button>
-              <button type="button" className="secondary-button" onClick={() => setActiveTab(TAB_CATCHES)}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setActiveTab(TAB_CATCHES)}
+              >
                 Gérer les captures
               </button>
-              <button type="button" className="secondary-button" onClick={() => setActiveTab(TAB_COMPETITIONS)}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setActiveTab(TAB_COMPETITIONS)}
+              >
                 Gérer les concours
               </button>
             </div>
@@ -372,19 +424,57 @@ export default function AdminDashboardPage() {
               <div
                 key={userItem.id}
                 className="card"
-                style={{ margin: 0, border: userItem.is_banned ? "1px solid #ef4444" : undefined }}
+                style={{
+                  margin: 0,
+                  border: userItem.is_banned ? "1px solid #ef4444" : undefined
+                }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap"
+                  }}
+                >
                   <div>
                     <h4 className="card-title" style={{ marginBottom: 8 }}>
                       {getUserDisplayName(userItem)}
                     </h4>
-                    <p className="card-text">Email : {userItem.email || "—"}</p>
-                    <p className="card-text">Rôle : {userItem.role || "user"}</p>
+
+                    <p className="card-text">
+                      Email : {userItem.email || "—"}
+                    </p>
+                    <p className="card-text">Pseudo : {userItem.pseudo || "—"}</p>
+                    <p className="card-text">Nom : {userItem.nom || "—"}</p>
+                    <p className="card-text">Prénom : {userItem.prenom || "—"}</p>
+                    <p className="card-text">
+                      Date de naissance : {formatDate(userItem.date_naissance)}
+                    </p>
+                    <p className="card-text">
+                      Code postal : {userItem.code_postal || "—"}
+                    </p>
+                    <p className="card-text">Sexe : {userItem.sexe || "—"}</p>
+                    <p className="card-text">
+                      Catégorie : {userItem.categorie || "—"}
+                    </p>
+                    <p className="card-text">Club : {userItem.club || "—"}</p>
                     <p className="card-text">Plan : {userItem.plan || "—"}</p>
-                    <p className="card-text">Créé le : {formatDateTime(userItem.created_at)}</p>
+                    <p className="card-text">Rôle : {userItem.role || "user"}</p>
+                    <p className="card-text">
+                      Créé le : {formatDateTime(userItem.created_at)}
+                    </p>
+                    <p className="card-text">
+                      Modifié le : {formatDateTime(userItem.updated_at)}
+                    </p>
                     <p className="card-text">
                       Statut : {userItem.is_banned ? "Banni" : "Actif"}
+                    </p>
+                    <p className="card-text">
+                      Date de bannissement : {formatDateTime(userItem.banned_at)}
+                    </p>
+                    <p className="card-text" style={{ wordBreak: "break-all" }}>
+                      ID : {userItem.id}
                     </p>
                   </div>
 
@@ -407,14 +497,27 @@ export default function AdminDashboardPage() {
 
       {!loadingData && activeTab === TAB_CATCHES ? (
         <div className="card">
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap"
+            }}
+          >
             <div>
               <h3 className="card-title">Captures ({catches.length})</h3>
               <p className="form-helper">Suppression multiple admin activée.</p>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button type="button" className="secondary-button" onClick={handleSelectAllCatches}>
-                {selectedCatchIds.length === catches.length ? "Tout désélectionner" : "Tout sélectionner"}
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={handleSelectAllCatches}
+              >
+                {selectedCatchIds.length === catches.length
+                  ? "Tout désélectionner"
+                  : "Tout sélectionner"}
               </button>
               <button
                 type="button"
@@ -429,8 +532,14 @@ export default function AdminDashboardPage() {
 
           <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
             {catches.map((catchItem) => (
-              <label key={catchItem.id} className="card" style={{ margin: 0, cursor: "pointer" }}>
-                <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+              <label
+                key={catchItem.id}
+                className="card"
+                style={{ margin: 0, cursor: "pointer" }}
+              >
+                <div
+                  style={{ display: "flex", gap: 12, alignItems: "flex-start" }}
+                >
                   <input
                     type="checkbox"
                     checked={selectedCatchIds.includes(catchItem.id)}
@@ -441,9 +550,15 @@ export default function AdminDashboardPage() {
                       {catchItem.espece || "Espèce non renseignée"}
                     </h4>
                     <p className="card-text">Utilisateur : {catchItem.user_id}</p>
-                    <p className="card-text">Longueur : {catchItem.longueur_cm ?? "—"} cm</p>
-                    <p className="card-text">Poids : {catchItem.poids_g ?? "—"} g</p>
-                    <p className="card-text">Date : {formatDateTime(catchItem.date_heure)}</p>
+                    <p className="card-text">
+                      Longueur : {catchItem.longueur_cm ?? "—"} cm
+                    </p>
+                    <p className="card-text">
+                      Poids : {catchItem.poids_g ?? "—"} g
+                    </p>
+                    <p className="card-text">
+                      Date : {formatDateTime(catchItem.date_heure)}
+                    </p>
                   </div>
                 </div>
               </label>
@@ -454,14 +569,27 @@ export default function AdminDashboardPage() {
 
       {!loadingData && activeTab === TAB_COMPETITIONS ? (
         <div className="card">
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap"
+            }}
+          >
             <div>
               <h3 className="card-title">Concours ({competitions.length})</h3>
               <p className="form-helper">Suppression multiple admin activée.</p>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button type="button" className="secondary-button" onClick={handleSelectAllCompetitions}>
-                {selectedCompetitionIds.length === competitions.length ? "Tout désélectionner" : "Tout sélectionner"}
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={handleSelectAllCompetitions}
+              >
+                {selectedCompetitionIds.length === competitions.length
+                  ? "Tout désélectionner"
+                  : "Tout sélectionner"}
               </button>
               <button
                 type="button"
@@ -476,21 +604,35 @@ export default function AdminDashboardPage() {
 
           <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
             {competitions.map((competition) => (
-              <label key={competition.id} className="card" style={{ margin: 0, cursor: "pointer" }}>
-                <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+              <label
+                key={competition.id}
+                className="card"
+                style={{ margin: 0, cursor: "pointer" }}
+              >
+                <div
+                  style={{ display: "flex", gap: 12, alignItems: "flex-start" }}
+                >
                   <input
                     type="checkbox"
                     checked={selectedCompetitionIds.includes(competition.id)}
-                    onChange={() => handleToggleCompetitionSelection(competition.id)}
+                    onChange={() =>
+                      handleToggleCompetitionSelection(competition.id)
+                    }
                   />
                   <div>
                     <h4 className="card-title" style={{ marginBottom: 8 }}>
                       {competition.name || "Concours sans nom"}
                     </h4>
                     <p className="card-text">Code : {competition.code || "—"}</p>
-                    <p className="card-text">Créateur : {competition.creator_id || "—"}</p>
-                    <p className="card-text">Début : {formatDateTime(competition.start_date)}</p>
-                    <p className="card-text">Fin : {formatDateTime(competition.end_date)}</p>
+                    <p className="card-text">
+                      Créateur : {competition.creator_id || "—"}
+                    </p>
+                    <p className="card-text">
+                      Début : {formatDateTime(competition.start_date)}
+                    </p>
+                    <p className="card-text">
+                      Fin : {formatDateTime(competition.end_date)}
+                    </p>
                   </div>
                 </div>
               </label>
