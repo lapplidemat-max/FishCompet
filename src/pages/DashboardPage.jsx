@@ -1,13 +1,19 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
 import { fetchUserCatches } from "../services/catches";
+import { fetchUserCompetitions } from "../services/competitions";
 
 /*
   MODIFICATION :
-  Le dashboard utilise maintenant les vraies captures Supabase
+  Le dashboard utilise maintenant les vraies données Supabase
   au lieu des données de démonstration.
+
+  MODIFICATION ADMIN :
+  - retrait des compteurs globaux sur cette page
+  - retrait des cartes d’administration dispersées
+  - le dashboard redevient une page utilisateur classique
+  - l’administration complète est centralisée sur /admin
 */
 
 export default function DashboardPage() {
@@ -20,45 +26,30 @@ export default function DashboardPage() {
     async function loadDashboardData() {
       try {
         if (!user?.id) {
+          setCatchCount(0);
+          setCompetitionCount(0);
           return;
         }
 
         /*
           MODIFICATION ADMIN :
-          - un admin voit les compteurs globaux
-          - un utilisateur voit ses compteurs personnels
+          retour à un comportement normal :
+          le dashboard affiche toujours les données personnelles.
         */
-        if (isAdmin) {
-          const [
-            { count: catchesCount, error: catchesError },
-            { count: competitionsCount, error: competitionsError }
-          ] = await Promise.all([
-            supabase.from("catches").select("*", { count: "exact", head: true }),
-            supabase.from("competitions").select("*", { count: "exact", head: true })
-          ]);
+        const [catches, competitions] = await Promise.all([
+          fetchUserCatches(user.id),
+          fetchUserCompetitions(user.id)
+        ]);
 
-          if (catchesError) {
-            throw catchesError;
-          }
-
-          if (competitionsError) {
-            throw competitionsError;
-          }
-
-          setCatchCount(catchesCount || 0);
-          setCompetitionCount(competitionsCount || 0);
-          return;
-        }
-
-        const catches = await fetchUserCatches(user.id);
         setCatchCount(catches.length);
+        setCompetitionCount(competitions.length);
       } catch (error) {
         console.error("Erreur dashboard :", error.message);
       }
     }
 
     loadDashboardData();
-  }, [user?.id, isAdmin]);
+  }, [user?.id]);
 
   return (
     <section>
@@ -69,24 +60,14 @@ export default function DashboardPage() {
           : `Bienvenue ${user?.email || ""}`}
       </p>
 
-      {isAdmin ? (
-        <div className="card">
-          <h3 className="card-title">Mode administrateur</h3>
-          <p className="card-text">
-            Tu as accès aux compteurs globaux et aux écrans de gestion complète
-            des captures et des concours.
-          </p>
-        </div>
-      ) : null}
-
       <div className="stats-grid">
         <div className="stat-card">
-          <p className="stat-card__label">Captures enregistrées</p>
+          <p className="stat-card__label">Mes captures</p>
           <p className="stat-card__value">{catchCount}</p>
         </div>
 
         <div className="stat-card">
-          <p className="stat-card__label">Concours actifs</p>
+          <p className="stat-card__label">Mes concours</p>
           <p className="stat-card__value">{competitionCount}</p>
         </div>
       </div>
@@ -126,39 +107,56 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {isAdmin ? (
-        <div className="actions-grid">
-          <div className="card">
-            <h3 className="card-title">Administration des captures</h3>
-            <p className="card-text">
-              Consulte et supprime toutes les captures enregistrées.
-            </p>
+      <div className="actions-grid">
+        <div className="card">
+          <h3 className="card-title">Mes concours</h3>
+          <p className="card-text">
+            Crée un concours, rejoins-en un avec un code et consulte leur
+            détail.
+          </p>
 
-            <div style={{ marginTop: "12px" }}>
-              <button
-                className="primary-button"
-                onClick={() => navigate("/captures")}
-              >
-                Gérer les captures
-              </button>
-            </div>
+          <div style={{ marginTop: "12px" }}>
+            <button
+              className="secondary-button"
+              onClick={() => navigate("/concours")}
+            >
+              Voir mes concours
+            </button>
           </div>
+        </div>
 
-          <div className="card">
-            <h3 className="card-title">Administration des concours</h3>
-            <p className="card-text">
-              Consulte tous les concours, ouvre leur détail et supprime-les si
-              nécessaire.
-            </p>
+        <div className="card">
+          <h3 className="card-title">Mon profil</h3>
+          <p className="card-text">
+            Consulte et mets à jour tes informations personnelles.
+          </p>
 
-            <div style={{ marginTop: "12px" }}>
-              <button
-                className="secondary-button"
-                onClick={() => navigate("/concours")}
-              >
-                Gérer les concours
-              </button>
-            </div>
+          <div style={{ marginTop: "12px" }}>
+            <button
+              className="secondary-button"
+              onClick={() => navigate("/profil")}
+            >
+              Voir mon profil
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {isAdmin ? (
+        <div className="card">
+          <h3 className="card-title">Administration</h3>
+          <p className="card-text">
+            Tu as accès à l’espace d’administration centralisé pour gérer les
+            utilisateurs, captures, concours et statistiques globales.
+          </p>
+
+          <div style={{ marginTop: "12px" }}>
+            <button
+              className="primary-button"
+              onClick={() => navigate("/admin")}
+            >
+              Ouvrir l’administration
+            </button>
           </div>
         </div>
       ) : null}
@@ -167,7 +165,7 @@ export default function DashboardPage() {
         <h3 className="card-title">État actuel</h3>
         <p className="card-text">
           Les captures sont maintenant branchées à Supabase. Le calcul exact du
-          poids sera finalisé dès ajout des barèmes JSON.
+          poids est géré selon le barème sélectionné.
         </p>
       </div>
     </section>
