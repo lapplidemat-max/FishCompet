@@ -12,6 +12,12 @@ import ProfilePage from "./pages/ProfilePage";
 import NotFoundPage from "./pages/NotFoundPage";
 
 /*
+  MODIFICATION ADMIN :
+  import de la page admin
+*/
+import AdminDashboardPage from "./pages/AdminDashboardPage";
+
+/*
   MODIFICATION :
   - ajout de la route détail concours
   - protection des pages internes via ProtectedRoute
@@ -20,25 +26,37 @@ import NotFoundPage from "./pages/NotFoundPage";
   - blocage global si profil incomplet
   - redirection automatique vers /profil
   - bannière globale sur la page profil tant que le profil n'est pas complet
+
+  NOUVELLE MODIFICATION ADMIN :
+  - ajout d'une route protégée admin
 */
+
+/*
+  MODIFICATION ADMIN :
+  route protégée pour accès admin uniquement
+*/
+function AdminRoute({ children }) {
+  const { isAdmin, loading } = useAuth();
+
+  if (loading) {
+    return null;
+  }
+
+  if (!isAdmin) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
 
 function ProfileCompletionGuard({ children }) {
   const { user, isProfileComplete, loading } = useAuth();
   const location = useLocation();
 
-  /*
-    MODIFICATION :
-    on attend la fin du chargement auth avant d'afficher les routes.
-  */
   if (loading) {
     return null;
   }
 
-  /*
-    MODIFICATION :
-    si l'utilisateur est connecté mais que son profil est incomplet,
-    on bloque tout sauf /profil.
-  */
   if (user && !isProfileComplete && location.pathname !== "/profil") {
     return <Navigate to="/profil" replace />;
   }
@@ -50,13 +68,6 @@ function ProfileCompletionBanner() {
   const { user, isProfileComplete, loading } = useAuth();
   const location = useLocation();
 
-  /*
-    MODIFICATION :
-    la bannière s'affiche uniquement :
-    - si connecté
-    - si profil incomplet
-    - sur la page /profil
-  */
   if (loading || !user || isProfileComplete || location.pathname !== "/profil") {
     return null;
   }
@@ -81,9 +92,6 @@ function ProfileCompletionBanner() {
 function ProtectedAppShell() {
   return (
     <>
-      {/* MODIFICATION :
-          bannière informative globale sur /profil
-      */}
       <ProfileCompletionBanner />
       <AppLayout />
     </>
@@ -106,9 +114,6 @@ export default function App() {
       >
         <Route path="/" element={<Navigate to="/tableau-de-bord" replace />} />
 
-        {/* MODIFICATION :
-            toutes ces pages sont bloquées si profil incomplet
-        */}
         <Route path="/tableau-de-bord" element={<DashboardPage />} />
         <Route path="/captures" element={<CatchesPage />} />
         <Route path="/captures/ajouter" element={<AddCatchPage />} />
@@ -118,10 +123,19 @@ export default function App() {
           element={<CompetitionDetailsPage />}
         />
 
-        {/* MODIFICATION :
-            profil reste toujours accessible
-        */}
         <Route path="/profil" element={<ProfilePage />} />
+
+        {/* =========================
+            MODIFICATION ADMIN
+            ========================= */}
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <AdminDashboardPage />
+            </AdminRoute>
+          }
+        />
       </Route>
 
       <Route path="*" element={<NotFoundPage />} />

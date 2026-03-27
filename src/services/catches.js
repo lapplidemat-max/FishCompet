@@ -1,18 +1,10 @@
 import { supabase } from "../lib/supabase";
 
 /*
-  MODIFICATION :
-  Service central des captures.
-  Il gère :
-  - récupération des captures
-  - ajout d'une capture
-  - suppression d'une capture
-  - upload photo
-
-  MODIFICATION IMPORTANTE :
-  - correction du nom du bucket Storage Supabase
-  - le bucket réel est : catch-photos
-  - Supabase est sensible à la casse
+  MODIFICATION ADMIN :
+  - ajout de fonctions admin
+  - possibilité de récupérer toutes les captures
+  - suppression globale (admin)
 */
 
 export async function fetchUserCatches(userId) {
@@ -22,33 +14,33 @@ export async function fetchUserCatches(userId) {
     .eq("user_id", userId)
     .order("date_heure", { ascending: false });
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
+  return data || [];
+}
 
+/*
+  MODIFICATION ADMIN :
+  récupération de toutes les captures
+*/
+export async function fetchAllCatches() {
+  const { data, error } = await supabase
+    .from("catches")
+    .select("*")
+    .order("date_heure", { ascending: false });
+
+  if (error) throw error;
   return data || [];
 }
 
 export async function uploadCatchPhoto({ userId, file }) {
-  if (!file) {
-    return null;
-  }
+  if (!file) return null;
 
   const extension = file.name?.split(".").pop()?.toLowerCase() || "jpg";
 
-  /*
-    MODIFICATION :
-    nom de fichier stocké dans un dossier userId.
-  */
   const fileName = `${userId}/${Date.now()}-${Math.random()
     .toString(36)
     .slice(2)}.${extension}`;
 
-  /*
-    MODIFICATION IMPORTANTE :
-    le nom du bucket doit correspondre exactement
-    au bucket visible dans Supabase : catch-photos
-  */
   const bucketName = "catch-photos";
 
   const { error: uploadError } = await supabase.storage
@@ -58,9 +50,7 @@ export async function uploadCatchPhoto({ userId, file }) {
       upsert: false
     });
 
-  if (uploadError) {
-    throw uploadError;
-  }
+  if (uploadError) throw uploadError;
 
   const { data } = supabase.storage
     .from(bucketName)
@@ -76,21 +66,19 @@ export async function createCatch(payload) {
     .select("*")
     .single();
 
-  if (error) {
-    throw error;
-  }
-
+  if (error) throw error;
   return data;
 }
 
-export async function deleteCatch(catchId, userId) {
+/*
+  MODIFICATION ADMIN :
+  suppression universelle (admin ou user)
+*/
+export async function deleteCatch(catchId) {
   const { error } = await supabase
     .from("catches")
     .delete()
-    .eq("id", catchId)
-    .eq("user_id", userId);
+    .eq("id", catchId);
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 }

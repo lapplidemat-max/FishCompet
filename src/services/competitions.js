@@ -22,6 +22,11 @@ import { supabase } from "../lib/supabase";
   - CORRECTION :
     le classement utilise maintenant les métriques officielles
     après validation commissaire et ignore les prises refusées
+
+  MODIFICATIONS ADMIN :
+  - ajout de fonctions admin pour récupérer tous les concours
+  - ajout d'une suppression de concours compatible admin
+  - conservation de la logique existante de l'application
 */
 
 function generateCompetitionCode() {
@@ -296,6 +301,36 @@ export async function fetchUserCompetitions(userId) {
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 }
 
+/*
+  MODIFICATION ADMIN :
+  récupération de tous les concours.
+  Les policies Supabase admin filtrent l'accès réel.
+*/
+export async function fetchAllCompetitions() {
+  const { data, error } = await supabase
+    .from("competitions")
+    .select(`
+      id,
+      name,
+      code,
+      creator_id,
+      participant_display_mode,
+      results_visibility,
+      results_released,
+      start_date,
+      end_date,
+      grace_period_minutes,
+      created_at
+    `)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return data || [];
+}
+
 export async function attachCatchToCompetition({
   competitionId,
   catchId,
@@ -351,7 +386,7 @@ export async function fetchCompetitionById(competitionId) {
   */
   const { data: creatorProfile, error: creatorError } = await supabase
     .from("profiles")
-    .select("id, pseudo, email, nom, prenom, sexe, categorie, club")
+    .select("id, pseudo, email, nom, prenom, sexe, categorie, club, role")
     .eq("id", competition.creator_id)
     .maybeSingle();
 
@@ -389,6 +424,24 @@ export async function updateCompetitionResultsRelease({
   return data;
 }
 
+/*
+  MODIFICATION ADMIN :
+  suppression d'un concours.
+  Les policies admin/creator contrôlent l'autorisation réelle.
+*/
+export async function deleteCompetition(competitionId) {
+  const { error } = await supabase
+    .from("competitions")
+    .delete()
+    .eq("id", competitionId);
+
+  if (error) {
+    throw error;
+  }
+
+  return true;
+}
+
 export async function fetchCompetitionParticipants(competitionId) {
   /*
     MODIFICATION :
@@ -414,7 +467,7 @@ export async function fetchCompetitionParticipants(competitionId) {
 
   const { data: profiles, error: profilesError } = await supabase
     .from("profiles")
-    .select("id, pseudo, email, nom, prenom, sexe, categorie, club")
+    .select("id, pseudo, email, nom, prenom, sexe, categorie, club, role")
     .in("id", userIds);
 
   if (profilesError) {
@@ -498,7 +551,7 @@ export async function fetchCompetitionCatches(competitionId) {
       .in("id", catchIds),
     supabase
       .from("profiles")
-      .select("id, pseudo, email, nom, prenom, sexe, categorie, club")
+      .select("id, pseudo, email, nom, prenom, sexe, categorie, club, role")
       .in("id", userIds)
   ]);
 
@@ -560,7 +613,7 @@ export async function fetchCompetitionParticipantCatches(
 
   const { data: participantProfile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, pseudo, email, nom, prenom, sexe, categorie, club")
+    .select("id, pseudo, email, nom, prenom, sexe, categorie, club, role")
     .eq("id", participantUserId)
     .maybeSingle();
 

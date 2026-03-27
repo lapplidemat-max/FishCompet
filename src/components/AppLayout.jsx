@@ -15,13 +15,17 @@ import { useAuth } from "../context/AuthContext";
     à côté de "Déconnexion"
   - formulaire de contact simple
   - envoi via mailto vers : lapplidemat@gmail.com
+
+  NOUVELLES MODIFICATIONS ADMIN :
+  - affichage d'un badge ADMIN si l'utilisateur est admin
+  - ajout d'un bouton rapide vers /admin
 */
 
 const CONTACT_EMAIL = "lapplidemat@gmail.com";
 
 export default function AppLayout() {
   const navigate = useNavigate();
-  const { signOut, profile, user, isProfileComplete } = useAuth();
+  const { signOut, profile, user, isProfileComplete, isAdmin } = useAuth();
 
   /*
     MODIFICATION :
@@ -122,11 +126,43 @@ ${trimmedMessage}
         >
           <div>
             <h1 className="app-header__title">L’appli de Mat</h1>
-            <p className="app-header__subtitle">
-              {profile?.pseudo
-                ? `Connecté en tant que ${profile.pseudo}`
-                : user?.email || "Utilisateur connecté"}
-            </p>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                flexWrap: "wrap"
+              }}
+            >
+              <p className="app-header__subtitle" style={{ margin: 0 }}>
+                {profile?.pseudo
+                  ? `Connecté en tant que ${profile.pseudo}`
+                  : user?.email || "Utilisateur connecté"}
+              </p>
+
+              {/* MODIFICATION ADMIN :
+                  badge visuel si compte admin
+              */}
+              {isAdmin ? (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    padding: "4px 10px",
+                    borderRadius: "999px",
+                    background: "#fee2e2",
+                    border: "1px solid #fca5a5",
+                    color: "#991b1b",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    letterSpacing: "0.4px"
+                  }}
+                >
+                  ADMIN
+                </span>
+              ) : null}
+            </div>
           </div>
 
           <div
@@ -137,6 +173,20 @@ ${trimmedMessage}
               justifyContent: "flex-end"
             }}
           >
+            {/* MODIFICATION ADMIN :
+                bouton rapide vers la page admin
+            */}
+            {isAdmin ? (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => navigate("/admin")}
+                style={{ width: "auto", minWidth: "120px" }}
+              >
+                Admin
+              </button>
+            ) : null}
+
             {/* MODIFICATION :
                 bouton contact dans le bandeau du haut
             */}
