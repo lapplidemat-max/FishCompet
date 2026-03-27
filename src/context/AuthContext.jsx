@@ -13,6 +13,10 @@ import { supabase } from "../lib/supabase";
   - ajout d'une vérification de complétude du profil
   - expose isProfileComplete dans le contexte
   - permet de rediriger l'utilisateur vers /profil après création de compte
+
+  NOUVELLES MODIFICATIONS ADMIN :
+  - expose role dans le contexte
+  - expose isAdmin pour activer les actions admin dans les pages
 */
 
 const AuthContext = createContext(null);
@@ -43,6 +47,16 @@ function checkIsProfileComplete(profile) {
       String(profile.plan || "").trim() &&
       String(profile.code_postal || "").trim()
   );
+}
+
+/*
+  MODIFICATION ADMIN :
+  Normalise le rôle chargé depuis le profil.
+*/
+function getUserRole(profile) {
+  const rawRole = String(profile?.role || "user").trim().toLowerCase();
+
+  return rawRole === "admin" ? "admin" : "user";
 }
 
 export function AuthProvider({ children }) {
@@ -134,12 +148,14 @@ export function AuthProvider({ children }) {
         setSession(initialSession);
         setUser(initialSession?.user ?? null);
 
-        // MODIFICATION :
-        // On débloque l'interface même si le profil est absent ou en erreur.
+        /*
+          MODIFICATION :
+          On débloque l'interface même si le profil est absent ou en erreur.
+        */
         setLoading(false);
 
         if (initialSession?.user?.id) {
-          refreshProfile(initialSession.user.id);
+          await refreshProfile(initialSession.user.id);
         } else {
           setProfile(null);
         }
@@ -185,6 +201,18 @@ export function AuthProvider({ children }) {
     return checkIsProfileComplete(profile);
   }, [profile]);
 
+  /*
+    MODIFICATION ADMIN :
+    expose le rôle utilisateur chargé depuis profiles.role.
+  */
+  const role = useMemo(() => {
+    return getUserRole(profile);
+  }, [profile]);
+
+  const isAdmin = useMemo(() => {
+    return role === "admin";
+  }, [role]);
+
   const value = useMemo(
     () => ({
       session,
@@ -195,9 +223,19 @@ export function AuthProvider({ children }) {
       signUp,
       signOut,
       refreshProfile,
-      isProfileComplete
+      isProfileComplete,
+      role,
+      isAdmin
     }),
-    [session, user, profile, loading, isProfileComplete]
+    [
+      session,
+      user,
+      profile,
+      loading,
+      isProfileComplete,
+      role,
+      isAdmin
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

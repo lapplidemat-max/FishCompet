@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { supabase } from "../lib/supabase";
 import { deleteCatch, fetchUserCatches } from "../services/catches";
 
 /*
@@ -132,7 +133,7 @@ function toFilterDateValue(dateValue) {
 
 export default function CatchesPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
 
   const [catches, setCatches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -162,6 +163,25 @@ export default function CatchesPage() {
 
       setLoading(true);
       setMessage("");
+      /*
+        MODIFICATION ADMIN :
+        - un admin charge toutes les captures
+        - un utilisateur standard charge seulement ses captures
+      */
+      if (isAdmin) {
+        const { data, error } = await supabase
+          .from("catches")
+          .select("*")
+          .order("date_heure", { ascending: false });
+
+        if (error) {
+          throw error;
+        }
+
+        setCatches(data || []);
+        return;
+      }
+
       const data = await fetchUserCatches(user.id);
       setCatches(data || []);
     } catch (error) {
@@ -173,7 +193,7 @@ export default function CatchesPage() {
 
   useEffect(() => {
     loadCatches();
-  }, [user?.id]);
+  }, [user?.id, isAdmin]);
 
   async function handleDelete(catchId) {
     const confirmed = window.confirm(
@@ -185,7 +205,33 @@ export default function CatchesPage() {
     }
 
     try {
-      await deleteCatch(catchId, user.id);
+      /*
+        MODIFICATION ADMIN :
+        - un admin peut supprimer n’importe quelle capture
+        - on supprime aussi les liaisons concours associées
+      */
+      if (isAdmin) {
+        const { error: deleteCompetitionLinksError } = await supabase
+          .from("competition_catches")
+          .delete()
+          .eq("catch_id", catchId);
+
+        if (deleteCompetitionLinksError) {
+          throw deleteCompetitionLinksError;
+        }
+
+        const { error: deleteCatchError } = await supabase
+          .from("catches")
+          .delete()
+          .eq("id", catchId);
+
+        if (deleteCatchError) {
+          throw deleteCatchError;
+        }
+      } else {
+        await deleteCatch(catchId, user.id);
+      }
+
       await loadCatches();
     } catch (error) {
       setMessage(error.message || "Erreur lors de la suppression.");
@@ -286,6 +332,15 @@ export default function CatchesPage() {
       <p className="page-description">
         Liste réelle des captures enregistrées dans Supabase.
       </p>
+
+      {isAdmin ? (
+        <div className="card">
+          <p className="card-text">
+            Mode admin actif : cette page affiche toutes les captures et permet
+            leur suppression globale.
+          </p>
+        </div>
+      ) : null}
 
       <div className="card">
         <button
@@ -494,6 +549,12 @@ export default function CatchesPage() {
               <p className="list-item__meta">
                 Date : {new Date(catchItem.date_heure).toLocaleString("fr-FR")}
               </p>
+
+              {isAdmin ? (
+                <p className="list-item__meta">
+                  Propriétaire : {catchItem.user_id || "Utilisateur inconnu"}
+                </p>
+              ) : null}
 
               {/* MODIFICATION :
                   affichage lieu si disponible.

@@ -820,6 +820,15 @@ function buildCompetitionResultsExportHtml({
         <p style="margin:0; font-size:14px; color:#4b5563;">
           ${competitionName} — Code : ${competitionCode}
         </p>
+
+      {isAdmin ? (
+        <div className="card">
+          <p className="card-text">
+            Mode admin actif : tu peux consulter, publier et contrôler ce
+            concours même si tu n’en es pas le créateur.
+          </p>
+        </div>
+      ) : null}
       </div>
 
       <div
@@ -984,7 +993,7 @@ function buildCompetitionResultsExportHtml({
 
 export default function CompetitionDetailsPage() {
   const { competitionId } = useParams();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
 
   const [competition, setCompetition] = useState(null);
   const [participants, setParticipants] = useState([]);
@@ -1241,21 +1250,30 @@ export default function CompetitionDetailsPage() {
     le créateur peut exporter même avant publication,
     les autres seulement si résultats visibles.
   */
+  /*
+    MODIFICATION ADMIN :
+    l’admin a accès aux outils de gestion du concours
+    comme le créateur.
+  */
+  const canManageCompetition = useMemo(() => {
+    return isCreator || isAdmin;
+  }, [isCreator, isAdmin]);
+
   const canExportResults = useMemo(() => {
-    return isCreator || canShowResults;
-  }, [isCreator, canShowResults]);
+    return canManageCompetition || canShowResults;
+  }, [canManageCompetition, canShowResults]);
 
   const isHourlyVisibility = competition?.results_visibility === "hourly";
 
   const canCreatorPublishResults = useMemo(() => {
     return (
-      isCreator &&
+      canManageCompetition &&
       isCompetitionEntryClosed &&
       competition?.results_visibility === "hidden" &&
       competition?.results_released !== true
     );
   }, [
-    isCreator,
+    canManageCompetition,
     isCompetitionEntryClosed,
     competition?.results_visibility,
     competition?.results_released
@@ -1287,7 +1305,7 @@ export default function CompetitionDetailsPage() {
   useEffect(() => {
     async function loadParticipantReview() {
       try {
-        if (!isCreator || !selectedParticipantId) {
+        if (!(isCreator || isAdmin) || !selectedParticipantId) {
           setReviewParticipantProfile(null);
           setReviewEntries([]);
           setReviewDrafts({});
@@ -1329,7 +1347,7 @@ export default function CompetitionDetailsPage() {
     }
 
     loadParticipantReview();
-  }, [competitionId, selectedParticipantId, isCreator]);
+  }, [competitionId, selectedParticipantId, isCreator, isAdmin]);
 
   /*
     MODIFICATION :
@@ -1949,7 +1967,7 @@ export default function CompetitionDetailsPage() {
         <div className="card">
           <h3 className="card-title">Publication des résultats</h3>
           <p className="card-text">
-            Le concours est clôturé. En tant que créateur, tu peux maintenant
+            Le concours est clôturé. En tant qu’administrateur ou créateur, tu peux maintenant
             publier les résultats.
           </p>
 
@@ -2237,7 +2255,7 @@ export default function CompetitionDetailsPage() {
         </div>
       )}
 
-      {isCreator ? (
+      {canManageCompetition ? (
         <div className="card">
           <h3 className="card-title">Vérification des fiches participants</h3>
 

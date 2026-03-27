@@ -28,11 +28,12 @@ const emptyProfile = {
   code_postal: "",
   sexe: "",
   categorie: "",
-  club: "Aucun club"
+  club: "Aucun club",
+  role: "user"
 };
 
 export default function ProfilePage() {
-  const { user, profile, refreshProfile, isProfileComplete } = useAuth();
+  const { user, profile, refreshProfile, isProfileComplete, isAdmin, role } = useAuth();
 
   const initialValues = useMemo(() => {
     const derivedCategory = getCategoryFromBirthDate(
@@ -49,7 +50,8 @@ export default function ProfilePage() {
       code_postal: profile?.code_postal || "",
       sexe: profile?.sexe || "",
       categorie: profile?.categorie || derivedCategory || "",
-      club: profile?.club || "Aucun club"
+      club: profile?.club || "Aucun club",
+      role: profile?.role || "user"
     };
   }, [user, profile]);
 
@@ -145,6 +147,12 @@ export default function ProfilePage() {
         sexe: formData.sexe || null,
         categorie: computedCategory,
         club: formData.club || "Aucun club",
+        /*
+          MODIFICATION ADMIN :
+          le rôle n’est jamais modifié par le formulaire standard.
+          On conserve le rôle existant pour éviter toute auto-élévation.
+        */
+        role: profile?.role || "user",
         updated_at: new Date().toISOString()
       };
 
@@ -179,6 +187,18 @@ export default function ProfilePage() {
       <p className="page-description">
         Profil utilisateur connecté à la base Supabase.
       </p>
+
+      {isAdmin ? (
+        <div className="card">
+          <p className="card-text">
+            Mode admin actif : ton rôle actuel est <strong>{role}</strong>.
+          </p>
+          <p className="card-text">
+            Le rôle admin est piloté par la base et n’est pas modifiable depuis
+            ce formulaire.
+          </p>
+        </div>
+      ) : null}
 
       {!isProfileComplete ? (
         <div className="card">
@@ -369,6 +389,25 @@ export default function ProfilePage() {
                 <option value="free">free</option>
                 <option value="premium">premium</option>
               </select>
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label" htmlFor="role">
+                Rôle
+              </label>
+              <input
+                id="role"
+                name="role"
+                className="form-input"
+                type="text"
+                value={formData.role}
+                readOnly
+              />
+              <p className="form-helper">
+                Géré côté base de données pour sécuriser le mode administrateur.
+              </p>
             </div>
           </div>
 

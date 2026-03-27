@@ -74,7 +74,7 @@ function buildMapsUrl(latitude, longitude) {
 
 export default function AddCatchPage() {
   const navigate = useNavigate();
-  const { user, isProfileComplete } = useAuth();
+  const { user, isProfileComplete, isAdmin } = useAuth();
 
   const [formData, setFormData] = useState({
     ...initialForm,
@@ -183,7 +183,7 @@ export default function AddCatchPage() {
     Messages d'erreur détaillés pour mieux diagnostiquer iPhone / Android.
   */
   function handleUseLocation() {
-    if (!isProfileComplete) {
+    if (!isProfileComplete && !isAdmin) {
       setMessage("Tu dois compléter ton profil avant d’ajouter une capture.");
       return;
     }
@@ -293,7 +293,7 @@ export default function AddCatchPage() {
         MODIFICATION :
         on bloque l'ajout tant que le profil obligatoire n'est pas complet.
       */
-      if (!isProfileComplete) {
+      if (!isProfileComplete && !isAdmin) {
         throw new Error(
           "Tu dois compléter ton profil avant d’enregistrer une capture."
         );
@@ -392,7 +392,16 @@ export default function AddCatchPage() {
         affectation optionnelle à un concours.
       </p>
 
-      {!isProfileComplete ? (
+      {isAdmin ? (
+        <div className="card">
+          <p className="card-text">
+            Mode admin actif : l’ajout de capture reste disponible même si le
+            profil administrateur n’est pas complet.
+          </p>
+        </div>
+      ) : null}
+
+      {!isProfileComplete && !isAdmin ? (
         <div className="card">
           <p className="card-text">
             Ton profil doit être complété avant d’ajouter une capture.
@@ -422,7 +431,7 @@ export default function AddCatchPage() {
                     espece: ""
                   }));
                 }}
-                disabled={!isProfileComplete}
+                disabled={!isProfileComplete && !isAdmin}
               >
                 <option value="atlantique">Atlantique</option>
                 <option value="mediterranee">Méditerranée</option>
@@ -440,7 +449,7 @@ export default function AddCatchPage() {
                 value={formData.espece}
                 onChange={handleChange}
                 required
-                disabled={!isProfileComplete}
+                disabled={!isProfileComplete && !isAdmin}
               >
                 <option value="">Choisir une espèce</option>
 
@@ -471,7 +480,7 @@ export default function AddCatchPage() {
                 value={formData.longueurCm}
                 onChange={handleChange}
                 required
-                disabled={!isProfileComplete}
+                disabled={!isProfileComplete && !isAdmin}
               />
               <p className="form-helper">
                 Longueur autorisée : de 1 à 115 cm.
@@ -488,7 +497,7 @@ export default function AddCatchPage() {
                 className="form-select"
                 value={formData.competitionId}
                 onChange={handleChange}
-                disabled={competitionsLoading || !isProfileComplete}
+                disabled={competitionsLoading || (!isProfileComplete && !isAdmin)}
               >
                 <option value="">Aucun concours</option>
 
@@ -563,7 +572,7 @@ export default function AddCatchPage() {
               value={formData.dateHeure}
               onChange={handleChange}
               required
-              disabled={!isProfileComplete}
+              disabled={!isProfileComplete && !isAdmin}
             />
           </div>
 
@@ -579,7 +588,7 @@ export default function AddCatchPage() {
               accept="image/*"
               capture="environment"
               onChange={handleChange}
-              disabled={!isProfileComplete}
+              disabled={!isProfileComplete && !isAdmin}
             />
             <p className="form-helper">
               Optionnelle. Compatible mobile pour prise de photo directe.
@@ -592,7 +601,7 @@ export default function AddCatchPage() {
               type="button"
               className="secondary-button"
               onClick={handleUseLocation}
-              disabled={geoLoading || !isProfileComplete}
+              disabled={geoLoading || (!isProfileComplete && !isAdmin)}
             >
               {geoLoading
                 ? "Récupération..."
@@ -633,7 +642,7 @@ export default function AddCatchPage() {
               className="form-textarea"
               value={formData.commentaire}
               onChange={handleChange}
-              disabled={!isProfileComplete}
+              disabled={!isProfileComplete && !isAdmin}
             />
           </div>
 
@@ -656,7 +665,7 @@ export default function AddCatchPage() {
           <button
             type="submit"
             className="primary-button"
-            disabled={submitting || !isProfileComplete}
+            disabled={submitting || (!isProfileComplete && !isAdmin)}
           >
             {submitting ? "Enregistrement..." : "Enregistrer"}
           </button>
