@@ -29,6 +29,7 @@ import AdminDashboardPage from "./pages/AdminDashboardPage";
 
   NOUVELLE MODIFICATION ADMIN :
   - ajout d'une route protégée admin
+  - blocage global des utilisateurs bannis
 */
 
 /*
@@ -44,6 +45,79 @@ function AdminRoute({ children }) {
 
   if (!isAdmin) {
     return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
+
+/*
+  MODIFICATION ADMIN :
+  guard global qui bloque tout utilisateur banni.
+*/
+function BannedGuard({ children }) {
+  const { isBanned, loading, signOut } = useAuth();
+
+  if (loading) {
+    return null;
+  }
+
+  if (isBanned) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "24px",
+          background: "#f8fafc"
+        }}
+      >
+        <div
+          className="card"
+          style={{
+            width: "100%",
+            maxWidth: "560px",
+            textAlign: "center"
+          }}
+        >
+          <h2 className="card-title">Compte suspendu</h2>
+          <p className="card-text">
+            Ton compte a été suspendu. L’accès à l’application est actuellement
+            bloqué.
+          </p>
+          <p className="card-text">
+            Contacte le support si tu penses qu’il s’agit d’une erreur.
+          </p>
+
+          <div
+            style={{
+              marginTop: "16px",
+              display: "flex",
+              justifyContent: "center"
+            }}
+          >
+            <button
+              type="button"
+              className="secondary-button"
+              style={{ width: "auto" }}
+              onClick={async () => {
+                try {
+                  await signOut();
+                } catch (error) {
+                  console.error(
+                    "Erreur lors de la déconnexion d'un utilisateur banni :",
+                    error
+                  );
+                }
+              }}
+            >
+              Déconnexion
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return children;
@@ -106,9 +180,11 @@ export default function App() {
       <Route
         element={
           <ProtectedRoute>
-            <ProfileCompletionGuard>
-              <ProtectedAppShell />
-            </ProfileCompletionGuard>
+            <BannedGuard>
+              <ProfileCompletionGuard>
+                <ProtectedAppShell />
+              </ProfileCompletionGuard>
+            </BannedGuard>
           </ProtectedRoute>
         }
       >

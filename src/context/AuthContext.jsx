@@ -17,6 +17,7 @@ import { supabase } from "../lib/supabase";
   NOUVELLES MODIFICATIONS ADMIN :
   - expose role dans le contexte
   - expose isAdmin pour activer les actions admin dans les pages
+  - expose isBanned pour bloquer un utilisateur suspendu
 */
 
 const AuthContext = createContext(null);
@@ -209,9 +210,21 @@ export function AuthProvider({ children }) {
     return getUserRole(profile);
   }, [profile]);
 
+  /*
+    MODIFICATION ADMIN :
+    expose si l'utilisateur est administrateur.
+  */
   const isAdmin = useMemo(() => {
     return role === "admin";
   }, [role]);
+
+  /*
+    MODIFICATION ADMIN :
+    expose si l'utilisateur est banni.
+  */
+  const isBanned = useMemo(() => {
+    return Boolean(profile?.is_banned);
+  }, [profile]);
 
   const value = useMemo(
     () => ({
@@ -225,7 +238,8 @@ export function AuthProvider({ children }) {
       refreshProfile,
       isProfileComplete,
       role,
-      isAdmin
+      isAdmin,
+      isBanned
     }),
     [
       session,
@@ -234,7 +248,8 @@ export function AuthProvider({ children }) {
       loading,
       isProfileComplete,
       role,
-      isAdmin
+      isAdmin,
+      isBanned
     ]
   );
 
