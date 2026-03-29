@@ -16,6 +16,11 @@ import { CLUBS_OPTIONS } from "../data/clubs";
   - profil obligatoire après création de compte
   - message d'alerte tant que le profil n'est pas complet
   - contrôle renforcé des champs obligatoires
+
+  CORRECTION :
+  - suppression du await sur refreshProfile pour éviter
+    le blocage "Enregistrement..." avec Supabase Auth
+  - ajout d'un message local au lieu d'uniquement alert
 */
 
 const emptyProfile = {
@@ -33,7 +38,8 @@ const emptyProfile = {
 };
 
 export default function ProfilePage() {
-  const { user, profile, refreshProfile, isProfileComplete, isAdmin, role } = useAuth();
+  const { user, profile, refreshProfile, isProfileComplete, isAdmin, role } =
+    useAuth();
 
   const initialValues = useMemo(() => {
     const derivedCategory = getCategoryFromBirthDate(
@@ -57,6 +63,12 @@ export default function ProfilePage() {
 
   const [formData, setFormData] = useState(emptyProfile);
   const [saving, setSaving] = useState(false);
+
+  /*
+    MODIFICATION :
+    message local d'information / erreur.
+  */
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     setFormData(initialValues);
@@ -88,11 +100,12 @@ export default function ProfilePage() {
     event.preventDefault();
 
     if (!user?.id) {
-      alert("Utilisateur introuvable.");
+      setMessage("Utilisateur introuvable.");
       return;
     }
 
     setSaving(true);
+    setMessage("");
 
     try {
       const computedCategory = getCategoryFromBirthDate(
@@ -156,13 +169,23 @@ export default function ProfilePage() {
         updated_at: new Date().toISOString()
       };
 
-      const { error } = await supabase.from("profiles").upsert(payload);
+      /*
+        MODIFICATION :
+        on précise le conflit sur id pour fiabiliser l'upsert.
+      */
+      const { error } = await supabase
+        .from("profiles")
+        .upsert(payload, { onConflict: "id" });
 
       if (error) {
         throw error;
       }
 
-      await refreshProfile(user.id);
+      /*
+        CORRECTION CRITIQUE :
+        ne pas await refreshProfile pour éviter le lock auth.
+      */
+      refreshProfile(user.id);
 
       /*
         MODIFICATION :
@@ -173,9 +196,9 @@ export default function ProfilePage() {
         categorie: computedCategory
       }));
 
-      alert("Profil mis à jour avec succès.");
+      setMessage("Profil mis à jour avec succès.");
     } catch (error) {
-      alert(error.message || "Erreur lors de la sauvegarde du profil.");
+      setMessage(error.message || "Erreur lors de la sauvegarde du profil.");
     } finally {
       setSaving(false);
     }
@@ -209,6 +232,12 @@ export default function ProfilePage() {
             Champs obligatoires : email, nom, prénom, date de naissance, pseudo,
             plan, code postal.
           </p>
+        </div>
+      ) : null}
+
+      {message ? (
+        <div className="card">
+          <p className="card-text">{message}</p>
         </div>
       ) : null}
 
