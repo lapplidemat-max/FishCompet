@@ -845,3 +845,82 @@ export function buildCompetitionRanking({
     };
   });
 }
+/*
+  MODIFICATION :
+  Gestion participants externes
+*/
+
+export async function createExternalParticipant({
+  competitionId,
+  displayName,
+  sexe,
+  categorie,
+  club
+}) {
+  const { data, error } = await supabase
+    .from("competition_external_participants")
+    .insert({
+      competition_id: competitionId,
+      display_name: displayName,
+      sexe,
+      categorie,
+      club
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchExternalParticipants(competitionId) {
+  const { data, error } = await supabase
+    .from("competition_external_participants")
+    .select("*")
+    .eq("competition_id", competitionId);
+
+  if (error) throw error;
+  return data || [];
+}
+
+/*
+  MODIFICATION :
+  Gestion captures externes
+*/
+
+export async function createExternalCatch({
+  competitionId,
+  externalParticipantId,
+  espece,
+  longueurCm,
+  poidsG,
+  zoneBareme,
+  commentaire
+}) {
+  const { data, error } = await supabase
+    .from("competition_external_catches")
+    .insert({
+      competition_id: competitionId,
+      external_participant_id: externalParticipantId,
+      espece,
+      longueur_cm: longueurCm,
+      poids_g: poidsG,
+      zone_bareme: zoneBareme,
+      commentaire
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchExternalCatches(competitionId) {
+  const { data, error } = await supabase
+    .from("competition_external_catches")
+    .select("*")
+    .eq("competition_id", competitionId);
+
+  if (error) throw error;
+  return data || [];
+}

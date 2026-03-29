@@ -9,6 +9,10 @@ import {
   fetchCompetitionCatches,
   fetchCompetitionParticipantCatches,
   fetchCompetitionParticipants,
+  fetchExternalParticipants,
+  fetchExternalCatches,
+  createExternalParticipant,
+  createExternalCatch,
   getCommissionStatusLabel,
   getCompetitionEntryDeadline,
   getCompetitionEntryStatus,
@@ -76,6 +80,15 @@ import {
     > meilleure femme
     > bilan des prises
     > détail des espèces prises
+
+  NOUVELLE MODIFICATION EXTERNES :
+  - ajout de participants externes persistés en base
+  - ajout de prises externes persistées en base
+  - intégration automatique dans :
+    > affichage
+    > statistiques
+    > classement
+    > export PDF
 */
 
 const ALL_FILTER_VALUE = "__all__";
@@ -135,11 +148,6 @@ const ATLANTIQUE_SHEET_MAP = {
 /*
   MODIFICATION :
   Mapping exact des espèces du barème Méditerranée vers la fiche officielle.
-  IMPORTANT :
-  certains libellés Méditerranée regroupent plusieurs espèces.
-  Quand le groupe n'est pas une correspondance certaine avec une ligne officielle,
-  on ne le mappe PAS ici pour éviter d'afficher une mauvaise ligne.
-  Il apparaîtra donc en ligne supplémentaire sur la fiche.
 */
 const MEDITERRANEE_SHEET_MAP = {
   "LOUP BAR": "BAR FRANC",
@@ -154,11 +162,29 @@ const MEDITERRANEE = "mediterranee";
 /*
   MODIFICATION :
   Capacités de pagination A4 de la fiche officielle.
-  - la première page contient l'en-tête + le tableau principal + les blocs de bas de page
-  - les pages suivantes servent à continuer la liste des espèces supplémentaires
 */
 const MAX_TOTAL_ROWS_FIRST_PAGE = 17;
 const MAX_TOTAL_ROWS_OTHER_PAGES = 22;
+
+/*
+  MODIFICATION EXTERNES :
+  valeurs par défaut formulaires.
+*/
+const DEFAULT_EXTERNAL_PARTICIPANT_FORM = {
+  displayName: "",
+  sexe: "—",
+  categorie: "—",
+  club: "—"
+};
+
+const DEFAULT_EXTERNAL_CATCH_FORM = {
+  participantId: "",
+  espece: "",
+  longueur_cm: "",
+  poids_g: "",
+  zone_bareme: ATLANTIQUE,
+  commentaire: ""
+};
 
 function buildCommissionDraft(entry) {
   return {
@@ -190,7 +216,6 @@ function normalizeSpeciesLabel(value) {
 /*
   MODIFICATION :
   Retourne le nom d'affichage de l'espèce pour une ligne supplémentaire.
-  On conserve le libellé saisi par le pêcheur / le barème pour rester fidèle.
 */
 function formatExtraSpeciesLabel(value) {
   return String(value || "Espèce non renseignée").trim();
@@ -209,8 +234,6 @@ function isGrandeViveSpecies(speciesName) {
 /*
   MODIFICATION :
   Résout une espèce vers une ligne officielle en fonction du barème choisi.
-  Si aucune correspondance sûre n'existe, retourne null pour l'envoyer
-  vers les lignes supplémentaires de la fiche.
 */
 function resolveOfficialSheetRow(speciesName, zoneBareme) {
   const rawSpecies = String(speciesName || "").trim();
@@ -226,10 +249,6 @@ function resolveOfficialSheetRow(speciesName, zoneBareme) {
     return mapping[rawSpecies];
   }
 
-  /*
-    MODIFICATION :
-    Sécurité supplémentaire sur quelques variantes utilisateur possibles.
-  */
   const normalized = normalizeSpeciesLabel(rawSpecies);
 
   const fallbackAliases = {
@@ -272,6 +291,31 @@ function formatLengthWeightItem(item) {
 }
 
 /*
+  MODIFICATION EXTERNES :
+  utilitaires participant externe.
+*/
+function buildExternalParticipantProfile(participant) {
+  return {
+    pseudo: participant.displayName,
+    sexe: participant.sexe || "—",
+    categorie: participant.categorie || "—",
+    club: participant.club || "—"
+  };
+}
+
+function getEntryDisplayProfile(entry) {
+  if (entry?.profiles) {
+    return entry.profiles;
+  }
+
+  if (entry?.external_participant_profile) {
+    return entry.external_participant_profile;
+  }
+
+  return null;
+}
+
+/*
   MODIFICATION :
   Prépare toutes les données de la fiche officielle.
 */
@@ -310,10 +354,6 @@ function buildOfficialSheetData({ entries, drafts }) {
 
     const officialMetrics = getOfficialCatchMetrics(effectiveEntry);
 
-    /*
-      MODIFICATION :
-      Une prise refusée est exclue de la fiche officielle.
-    */
     if (!officialMetrics) {
       return;
     }
@@ -352,21 +392,11 @@ function buildOfficialSheetData({ entries, drafts }) {
     const officialRowLabel = resolveOfficialSheetRow(speciesName, zoneBareme);
 
     if (officialRowLabel && officialRowsMap.has(officialRowLabel)) {
-      /*
-        MODIFICATION IMPORTANTE :
-        on conserve l'ordre de saisie, donc aucun tri sur les longueurs.
-        On stocke maintenant longueur + poids pour l'affichage "32 (450g)".
-      */
       officialRowsMap.get(officialRowLabel).push({
         longueurCm,
         poidsG
       });
     } else {
-      /*
-        MODIFICATION IMPORTANTE :
-        les espèces supplémentaires gardent aussi l'ordre de saisie.
-        On stocke maintenant longueur + poids.
-      */
       const currentExtraRow = extraRowsMap.get(speciesName) || [];
       currentExtraRow.push({
         longueurCm,
@@ -380,30 +410,16 @@ function buildOfficialSheetData({ entries, drafts }) {
     biggestFishWeight = Math.max(biggestFishWeight, poidsG);
   });
 
-  /*
-    MODIFICATION IMPORTANTE :
-    on ne trie plus les longueurs.
-    On restitue les lignes dans l'ordre réel de saisie.
-  */
   const officialRows = OFFICIAL_SHEET_ROWS.map((label) => ({
     label,
     lengths: [...(officialRowsMap.get(label) || [])]
   }));
 
-  /*
-    MODIFICATION :
-    on garde l'ordre d'apparition des espèces supplémentaires,
-    donc on ne trie plus les lignes supplémentaires par ordre alphabétique.
-  */
   const extraRows = Array.from(extraRowsMap.entries()).map(([label, lengths]) => ({
     label,
     lengths: [...lengths]
   }));
 
-  /*
-    MODIFICATION :
-    pour les poissons < 15 cm, on garde aussi l'ordre d'apparition.
-  */
   const under15Rows = Array.from(under15RowsMap.values());
 
   return {
@@ -425,8 +441,6 @@ function buildOfficialSheetData({ entries, drafts }) {
 /*
   MODIFICATION :
   Découpe la fiche officielle en plusieurs pages A4 si les lignes dépassent.
-  - page 1 : lignes officielles + autant de lignes supplémentaires que possible
-  - pages suivantes : uniquement suite des lignes supplémentaires
 */
 function buildOfficialSheetPages(sheetData) {
   const officialRows = sheetData?.officialRows || [];
@@ -470,7 +484,7 @@ function buildOfficialSheetPages(sheetData) {
 
 /*
   MODIFICATION EXPORT :
-  comparaison du classement officiel en reprenant la logique concours.
+  comparaison du classement officiel.
 */
 function compareExportRankingRows(a, b) {
   if (b.totalWeight !== a.totalWeight) {
@@ -536,17 +550,19 @@ function buildOfficialCompetitionRanking({
     }
 
     if (!rowsByUserId.has(entry.user_id)) {
+      const entryProfile = getEntryDisplayProfile(entry);
+
       rowsByUserId.set(entry.user_id, {
         userId: entry.user_id,
         displayName: getDisplayNameFromProfile(
-          entry?.profiles,
+          entryProfile,
           participantDisplayMode
         ),
-        nom: entry?.profiles?.nom || "",
-        prenom: entry?.profiles?.prenom || "",
-        sexe: entry?.profiles?.sexe || "—",
-        categorie: entry?.profiles?.categorie || "—",
-        club: entry?.profiles?.club || "—",
+        nom: entryProfile?.nom || "",
+        prenom: entryProfile?.prenom || "",
+        sexe: entryProfile?.sexe || "—",
+        categorie: entryProfile?.categorie || "—",
+        club: entryProfile?.club || "—",
         fishCount: 0,
         totalWeight: 0,
         biggestCatch: 0,
@@ -715,7 +731,8 @@ function buildCompetitionExportData({
 function buildCompetitionResultsExportHtml({
   competition,
   creatorName,
-  exportData
+  exportData,
+  isAdmin = false
 }) {
   const competitionName = competition?.name || "Concours";
   const competitionCode = competition?.code || "—";
@@ -802,6 +819,24 @@ function buildCompetitionResultsExportHtml({
         </tr>
       `;
 
+  const adminBlock = isAdmin
+    ? `
+      <div
+        style="
+          margin-top:16px;
+          border:1px solid #d1d5db;
+          border-radius:12px;
+          padding:14px;
+          background:#fff;
+        "
+      >
+        <p style="margin:0; font-size:14px; color:#111827;">
+          Mode admin actif : tu peux consulter, publier et contrôler ce concours même si tu n’en es pas le créateur.
+        </p>
+      </div>
+    `
+    : "";
+
   return `
     <div
       id="competition-results-export"
@@ -820,15 +855,7 @@ function buildCompetitionResultsExportHtml({
         <p style="margin:0; font-size:14px; color:#4b5563;">
           ${competitionName} — Code : ${competitionCode}
         </p>
-
-      {isAdmin ? (
-        <div className="card">
-          <p className="card-text">
-            Mode admin actif : tu peux consulter, publier et contrôler ce
-            concours même si tu n’en es pas le créateur.
-          </p>
-        </div>
-      ) : null}
+        ${adminBlock}
       </div>
 
       <div
@@ -1037,22 +1064,106 @@ export default function CompetitionDetailsPage() {
   const [showCompetitionCatches, setShowCompetitionCatches] = useState(false);
   const [showReviewEntries, setShowReviewEntries] = useState(false);
 
+  /*
+    MODIFICATION EXTERNES :
+    états participants et prises externes persistés.
+  */
+  const [externalParticipants, setExternalParticipants] = useState([]);
+  const [externalCatches, setExternalCatches] = useState([]);
+  const [newExternalParticipant, setNewExternalParticipant] = useState(
+    DEFAULT_EXTERNAL_PARTICIPANT_FORM
+  );
+  const [newExternalCatch, setNewExternalCatch] = useState(
+    DEFAULT_EXTERNAL_CATCH_FORM
+  );
+  const [externalMessage, setExternalMessage] = useState("");
+
   useEffect(() => {
     async function loadCompetitionDetails() {
       try {
         setLoading(true);
         setMessage("");
 
-        const [competitionData, participantsData, catchesData] =
-          await Promise.all([
-            fetchCompetitionById(competitionId),
-            fetchCompetitionParticipants(competitionId),
-            fetchCompetitionCatches(competitionId)
-          ]);
+        /*
+          MODIFICATION EXTERNES :
+          chargement complet concours + externes.
+        */
+        const [
+          competitionData,
+          participantsData,
+          catchesData,
+          externalParticipantsData,
+          externalCatchesData
+        ] = await Promise.all([
+          fetchCompetitionById(competitionId),
+          fetchCompetitionParticipants(competitionId),
+          fetchCompetitionCatches(competitionId),
+          fetchExternalParticipants(competitionId),
+          fetchExternalCatches(competitionId)
+        ]);
 
         setCompetition(competitionData);
-        setParticipants(participantsData);
-        setCompetitionCatches(catchesData);
+        setParticipants(participantsData || []);
+        setCompetitionCatches(catchesData || []);
+
+        const mappedExternalParticipants = (externalParticipantsData || []).map(
+          (participant) => ({
+            userId: participant.id,
+            displayName: participant.display_name,
+            sexe: participant.sexe || "—",
+            categorie: participant.categorie || "—",
+            club: participant.club || "—"
+          })
+        );
+
+        setExternalParticipants(mappedExternalParticipants);
+
+        /*
+          MODIFICATION EXTERNES :
+          on enrichit les prises externes avec le profil du participant
+          pour l’affichage et le classement.
+        */
+        const externalParticipantsMap = new Map(
+          mappedExternalParticipants.map((participant) => [
+            participant.userId,
+            participant
+          ])
+        );
+
+        const mappedExternalCatches = (externalCatchesData || []).map(
+          (catchRow) => {
+            const participant = externalParticipantsMap.get(
+              catchRow.external_participant_id
+            );
+
+            return {
+              id: catchRow.id,
+              user_id: catchRow.external_participant_id,
+              profiles: participant
+                ? buildExternalParticipantProfile(participant)
+                : null,
+              external_participant_profile: participant
+                ? buildExternalParticipantProfile(participant)
+                : {
+                    pseudo: "Participant externe",
+                    sexe: "—",
+                    categorie: "—",
+                    club: "—"
+                  },
+              catches: {
+                espece: catchRow.espece,
+                longueur_cm: catchRow.longueur_cm,
+                poids_g: catchRow.poids_g,
+                date_heure: catchRow.created_at,
+                zone_bareme: catchRow.zone_bareme || ATLANTIQUE,
+                commentaire: catchRow.commentaire || ""
+              },
+              commission_status: "validated"
+            };
+          }
+        );
+
+        setExternalCatches(mappedExternalCatches);
       } catch (error) {
         setMessage(error.message || "Erreur lors du chargement du concours.");
       } finally {
@@ -1064,18 +1175,41 @@ export default function CompetitionDetailsPage() {
   }, [competitionId]);
 
   /*
+    MODIFICATION EXTERNES :
+    fusion participants standards + externes.
+  */
+  const mergedParticipants = useMemo(() => {
+    const mappedExternalParticipants = externalParticipants.map((participant) => ({
+      user_id: participant.userId,
+      profiles: buildExternalParticipantProfile(participant),
+      is_external: true
+    }));
+
+    return [...participants, ...mappedExternalParticipants];
+  }, [participants, externalParticipants]);
+
+  /*
+    MODIFICATION EXTERNES :
+    fusion captures standards + externes.
+  */
+  const mergedCompetitionCatches = useMemo(() => {
+    return [...competitionCatches, ...externalCatches];
+  }, [competitionCatches, externalCatches]);
+
+  /*
     MODIFICATION :
     Classement général brut, sans filtre.
+    Il inclut maintenant les externes via les tableaux fusionnés.
   */
   const ranking = useMemo(() => {
     return buildCompetitionRanking({
-      participants,
-      competitionCatches,
+      participants: mergedParticipants,
+      competitionCatches: mergedCompetitionCatches,
       participantDisplayMode: competition?.participant_display_mode || "pseudo"
     });
   }, [
-    participants,
-    competitionCatches,
+    mergedParticipants,
+    mergedCompetitionCatches,
     competition?.participant_display_mode
   ]);
 
@@ -1090,10 +1224,10 @@ export default function CompetitionDetailsPage() {
 
     return buildCompetitionExportData({
       competition,
-      participants,
-      competitionCatches
+      participants: mergedParticipants,
+      competitionCatches: mergedCompetitionCatches
     });
-  }, [competition, participants, competitionCatches]);
+  }, [competition, mergedParticipants, mergedCompetitionCatches]);
 
   /*
     MODIFICATION :
@@ -1152,7 +1286,7 @@ export default function CompetitionDetailsPage() {
   }, [ranking, selectedSexe, selectedCategorie, selectedClub]);
 
   const stats = useMemo(() => {
-    const catchesOnly = competitionCatches
+    const catchesOnly = mergedCompetitionCatches
       .map((entry) => entry.catches)
       .filter(Boolean);
 
@@ -1162,10 +1296,6 @@ export default function CompetitionDetailsPage() {
       return sum + Number(catchItem.poids_g || 0);
     }, 0);
 
-    /*
-      MODIFICATION :
-      la plus grosse prise retourne maintenant l'espèce, le poids et la longueur.
-    */
     const biggestCatch = catchesOnly.reduce(
       (max, catchItem) => {
         const weight = Number(catchItem.poids_g || 0);
@@ -1188,12 +1318,12 @@ export default function CompetitionDetailsPage() {
     );
 
     return {
-      participantsCount: participants.length,
+      participantsCount: mergedParticipants.length,
       totalCatches,
       totalWeight,
       biggestCatch
     };
-  }, [participants, competitionCatches]);
+  }, [mergedParticipants, mergedCompetitionCatches]);
 
   const creatorName = useMemo(() => {
     return getDisplayNameFromProfile(
@@ -1214,10 +1344,6 @@ export default function CompetitionDetailsPage() {
     return getCompetitionEntryDeadline(competition);
   }, [competition]);
 
-  /*
-    MODIFICATION :
-    Vérifie si le concours n'accepte plus de saisie.
-  */
   const isCompetitionEntryClosed = useMemo(() => {
     if (!entryDeadline) {
       return false;
@@ -1226,13 +1352,6 @@ export default function CompetitionDetailsPage() {
     return new Date() > entryDeadline;
   }, [entryDeadline]);
 
-  /*
-    MODIFICATION :
-    Les résultats sont visibles :
-    - immédiatement si mode immediate
-    - si results_released = true quand mode hidden
-    - pour hourly on garde l'affichage visible, comme avant
-  */
   const canShowResults = useMemo(() => {
     if (!competition) {
       return false;
@@ -1245,11 +1364,6 @@ export default function CompetitionDetailsPage() {
     return true;
   }, [competition]);
 
-  /*
-    MODIFICATION EXPORT :
-    le créateur peut exporter même avant publication,
-    les autres seulement si résultats visibles.
-  */
   /*
     MODIFICATION ADMIN :
     l’admin a accès aux outils de gestion du concours
@@ -1282,6 +1396,8 @@ export default function CompetitionDetailsPage() {
   /*
     MODIFICATION :
     Liste des participants pour la fiche commissaire.
+    Les externes ne sont pas ajoutés ici car la fiche commissaire
+    actuelle utilise le chargement participant standard.
   */
   const reviewParticipantOptions = useMemo(() => {
     return participants
@@ -1332,10 +1448,6 @@ export default function CompetitionDetailsPage() {
         });
         setReviewDrafts(nextDrafts);
 
-        /*
-          MODIFICATION :
-          on masque par défaut les prises détaillées à chaque changement de participant.
-        */
         setShowReviewEntries(false);
       } catch (error) {
         setReviewMessage(
@@ -1475,7 +1587,8 @@ export default function CompetitionDetailsPage() {
       const exportHtml = buildCompetitionResultsExportHtml({
         competition,
         creatorName,
-        exportData: competitionExportData
+        exportData: competitionExportData,
+        isAdmin
       });
 
       const container = document.createElement("div");
@@ -1586,6 +1699,118 @@ export default function CompetitionDetailsPage() {
         [field]: value
       }
     }));
+  }
+
+  /*
+    MODIFICATION EXTERNES :
+    ajout participant externe persisté.
+  */
+  async function handleAddExternalParticipant() {
+    try {
+      const displayName = String(newExternalParticipant.displayName || "").trim();
+
+      if (!displayName) {
+        setExternalMessage(
+          "Le nom ou pseudo du participant externe est obligatoire."
+        );
+        return;
+      }
+
+      const createdParticipant = await createExternalParticipant({
+        competitionId,
+        displayName,
+        sexe: newExternalParticipant.sexe || "—",
+        categorie: newExternalParticipant.categorie || "—",
+        club: newExternalParticipant.club || "—"
+      });
+
+      const mappedParticipant = {
+        userId: createdParticipant.id,
+        displayName: createdParticipant.display_name,
+        sexe: createdParticipant.sexe || "—",
+        categorie: createdParticipant.categorie || "—",
+        club: createdParticipant.club || "—"
+      };
+
+      setExternalParticipants((prev) => [...prev, mappedParticipant]);
+      setNewExternalParticipant(DEFAULT_EXTERNAL_PARTICIPANT_FORM);
+      setExternalMessage("Participant externe ajouté.");
+    } catch (error) {
+      setExternalMessage(
+        error.message || "Erreur lors de l’ajout du participant externe."
+      );
+    }
+  }
+
+  /*
+    MODIFICATION EXTERNES :
+    ajout prise externe persistée.
+  */
+  async function handleAddExternalCatch() {
+    try {
+      if (!newExternalCatch.participantId) {
+        setExternalMessage("Choisis un participant externe.");
+        return;
+      }
+
+      if (!newExternalCatch.espece || !String(newExternalCatch.espece).trim()) {
+        setExternalMessage("L’espèce est obligatoire.");
+        return;
+      }
+
+      if (
+        newExternalCatch.longueur_cm === "" ||
+        Number.isNaN(Number(newExternalCatch.longueur_cm))
+      ) {
+        setExternalMessage("La longueur est obligatoire.");
+        return;
+      }
+
+      const selectedParticipant = externalParticipants.find(
+        (participant) => participant.userId === newExternalCatch.participantId
+      );
+
+      if (!selectedParticipant) {
+        setExternalMessage("Participant externe introuvable.");
+        return;
+      }
+
+      const createdCatch = await createExternalCatch({
+        competitionId,
+        externalParticipantId: newExternalCatch.participantId,
+        espece: String(newExternalCatch.espece || "").trim(),
+        longueurCm: Number(newExternalCatch.longueur_cm),
+        poidsG: Number(newExternalCatch.poids_g || 0),
+        zoneBareme: newExternalCatch.zone_bareme || ATLANTIQUE,
+        commentaire: String(newExternalCatch.commentaire || "").trim()
+      });
+
+      const mappedCatch = {
+        id: createdCatch.id,
+        user_id: createdCatch.external_participant_id,
+        profiles: buildExternalParticipantProfile(selectedParticipant),
+        external_participant_profile: buildExternalParticipantProfile(
+          selectedParticipant
+        ),
+        catches: {
+          espece: createdCatch.espece,
+          longueur_cm: createdCatch.longueur_cm,
+          poids_g: createdCatch.poids_g,
+          date_heure: createdCatch.created_at,
+          zone_bareme: createdCatch.zone_bareme || ATLANTIQUE,
+          commentaire: createdCatch.commentaire || ""
+        },
+        commission_status: "validated"
+      };
+
+      setExternalCatches((prev) => [...prev, mappedCatch]);
+      setNewExternalCatch(DEFAULT_EXTERNAL_CATCH_FORM);
+      setExternalMessage("Prise externe ajoutée.");
+    } catch (error) {
+      setExternalMessage(
+        error.message || "Erreur lors de l’ajout de la prise externe."
+      );
+    }
   }
 
   /*
@@ -1944,6 +2169,15 @@ export default function CompetitionDetailsPage() {
         <p className="card-text">Statut : {getStatusLabel()}</p>
       </div>
 
+      {isAdmin ? (
+        <div className="card">
+          <p className="card-text">
+            Mode admin actif : tu peux consulter, publier et contrôler ce
+            concours même si tu n’en es pas le créateur.
+          </p>
+        </div>
+      ) : null}
+
       {isHourlyVisibility ? (
         <div className="card">
           <p className="card-text">
@@ -1967,8 +2201,8 @@ export default function CompetitionDetailsPage() {
         <div className="card">
           <h3 className="card-title">Publication des résultats</h3>
           <p className="card-text">
-            Le concours est clôturé. En tant qu’administrateur ou créateur, tu peux maintenant
-            publier les résultats.
+            Le concours est clôturé. En tant qu’administrateur ou créateur, tu
+            peux maintenant publier les résultats.
           </p>
 
           <div style={{ marginTop: "12px" }}>
@@ -1981,6 +2215,248 @@ export default function CompetitionDetailsPage() {
               {publishingResults ? "Publication..." : "Afficher les résultats"}
             </button>
           </div>
+        </div>
+      ) : null}
+
+      {/* MODIFICATION EXTERNES :
+          bloc d’ajout participant externe et prise externe
+      */}
+      {canManageCompetition ? (
+        <div className="card">
+          <h3 className="card-title">Ajout manuel organisateur</h3>
+
+          <div className="form" style={{ marginBottom: "24px" }}>
+            <h4 className="card-title" style={{ fontSize: "1rem" }}>
+              Ajouter un participant externe
+            </h4>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label" htmlFor="external-display-name">
+                  Nom / pseudo
+                </label>
+                <input
+                  id="external-display-name"
+                  className="form-input"
+                  value={newExternalParticipant.displayName}
+                  onChange={(event) =>
+                    setNewExternalParticipant((prev) => ({
+                      ...prev,
+                      displayName: event.target.value
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="external-sexe">
+                  Sexe
+                </label>
+                <input
+                  id="external-sexe"
+                  className="form-input"
+                  value={newExternalParticipant.sexe}
+                  onChange={(event) =>
+                    setNewExternalParticipant((prev) => ({
+                      ...prev,
+                      sexe: event.target.value
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label" htmlFor="external-categorie">
+                  Catégorie
+                </label>
+                <input
+                  id="external-categorie"
+                  className="form-input"
+                  value={newExternalParticipant.categorie}
+                  onChange={(event) =>
+                    setNewExternalParticipant((prev) => ({
+                      ...prev,
+                      categorie: event.target.value
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="external-club">
+                  Club
+                </label>
+                <input
+                  id="external-club"
+                  className="form-input"
+                  value={newExternalParticipant.club}
+                  onChange={(event) =>
+                    setNewExternalParticipant((prev) => ({
+                      ...prev,
+                      club: event.target.value
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleAddExternalParticipant}
+            >
+              Ajouter le participant externe
+            </button>
+          </div>
+
+          <div className="form">
+            <h4 className="card-title" style={{ fontSize: "1rem" }}>
+              Ajouter une prise externe
+            </h4>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="external-catch-participant">
+                Participant
+              </label>
+              <select
+                id="external-catch-participant"
+                className="form-select"
+                value={newExternalCatch.participantId}
+                onChange={(event) =>
+                  setNewExternalCatch((prev) => ({
+                    ...prev,
+                    participantId: event.target.value
+                  }))
+                }
+              >
+                <option value="">Choisir un participant externe</option>
+                {externalParticipants.map((participant) => (
+                  <option key={participant.userId} value={participant.userId}>
+                    {participant.displayName}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label" htmlFor="external-catch-espece">
+                  Espèce
+                </label>
+                <input
+                  id="external-catch-espece"
+                  className="form-input"
+                  value={newExternalCatch.espece}
+                  onChange={(event) =>
+                    setNewExternalCatch((prev) => ({
+                      ...prev,
+                      espece: event.target.value
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="form-group">
+                <label
+                  className="form-label"
+                  htmlFor="external-catch-zone-bareme"
+                >
+                  Barème
+                </label>
+                <select
+                  id="external-catch-zone-bareme"
+                  className="form-select"
+                  value={newExternalCatch.zone_bareme}
+                  onChange={(event) =>
+                    setNewExternalCatch((prev) => ({
+                      ...prev,
+                      zone_bareme: event.target.value
+                    }))
+                  }
+                >
+                  <option value={ATLANTIQUE}>Atlantique</option>
+                  <option value={MEDITERRANEE}>Méditerranée</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label
+                  className="form-label"
+                  htmlFor="external-catch-longueur"
+                >
+                  Longueur (cm)
+                </label>
+                <input
+                  id="external-catch-longueur"
+                  className="form-input"
+                  type="number"
+                  value={newExternalCatch.longueur_cm}
+                  onChange={(event) =>
+                    setNewExternalCatch((prev) => ({
+                      ...prev,
+                      longueur_cm: event.target.value
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="external-catch-poids">
+                  Poids (g)
+                </label>
+                <input
+                  id="external-catch-poids"
+                  className="form-input"
+                  type="number"
+                  value={newExternalCatch.poids_g}
+                  onChange={(event) =>
+                    setNewExternalCatch((prev) => ({
+                      ...prev,
+                      poids_g: event.target.value
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label
+                className="form-label"
+                htmlFor="external-catch-commentaire"
+              >
+                Commentaire
+              </label>
+              <input
+                id="external-catch-commentaire"
+                className="form-input"
+                value={newExternalCatch.commentaire}
+                onChange={(event) =>
+                  setNewExternalCatch((prev) => ({
+                    ...prev,
+                    commentaire: event.target.value
+                  }))
+                }
+              />
+            </div>
+
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleAddExternalCatch}
+            >
+              Ajouter la prise externe
+            </button>
+          </div>
+
+          {externalMessage ? (
+            <p className="card-text" style={{ marginTop: "12px" }}>
+              {externalMessage}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -2165,9 +2641,6 @@ export default function CompetitionDetailsPage() {
                 Captures du concours
               </h3>
 
-              {/* MODIFICATION :
-                  les captures du concours sont masquées par défaut.
-              */}
               <button
                 type="button"
                 className="secondary-button"
@@ -2175,7 +2648,7 @@ export default function CompetitionDetailsPage() {
               >
                 {showCompetitionCatches
                   ? "Masquer les prises"
-                  : `Afficher les prises (${competitionCatches.length})`}
+                  : `Afficher les prises (${mergedCompetitionCatches.length})`}
               </button>
             </div>
 
@@ -2183,13 +2656,13 @@ export default function CompetitionDetailsPage() {
               <p className="card-text">
                 Les prises du concours sont masquées pour limiter le scroll.
               </p>
-            ) : competitionCatches.length === 0 ? (
+            ) : mergedCompetitionCatches.length === 0 ? (
               <p className="card-text">
                 Aucune capture n’est encore enregistrée dans ce concours.
               </p>
             ) : (
               <div className="simple-list">
-                {competitionCatches.map((entry) => {
+                {mergedCompetitionCatches.map((entry) => {
                   const catchData = entry.catches;
 
                   if (!catchData) {
@@ -2197,7 +2670,7 @@ export default function CompetitionDetailsPage() {
                   }
 
                   const fisherName = getDisplayNameFromProfile(
-                    entry.profiles,
+                    getEntryDisplayProfile(entry),
                     competition?.participant_display_mode || "pseudo"
                   );
 
@@ -2307,9 +2780,6 @@ export default function CompetitionDetailsPage() {
                 </p>
               </div>
 
-              {/* MODIFICATION :
-                  fiche officielle commissaire avec pagination automatique A4
-              */}
               <div className="card" style={{ marginBottom: "16px" }}>
                 <div
                   style={{
@@ -2897,18 +3367,12 @@ export default function CompetitionDetailsPage() {
                 </div>
               </div>
 
-              {/* MODIFICATION :
-                  barre de contrôle rapide organisateur
-              */}
               <div className="card" style={{ marginBottom: "16px" }}>
                 <h4 className="card-title">Contrôle rapide</h4>
 
                 <div className="form-row">
                   <div className="form-group">
-                    <label
-                      className="form-label"
-                      htmlFor="review-status-filter"
-                    >
+                    <label className="form-label" htmlFor="review-status-filter">
                       Filtrer les prises
                     </label>
                     <select
@@ -2963,9 +3427,6 @@ export default function CompetitionDetailsPage() {
                     Prises du participant
                   </h4>
 
-                  {/* MODIFICATION :
-                      les prises détaillées du participant sont masquées par défaut.
-                  */}
                   <button
                     type="button"
                     className="secondary-button"
@@ -3006,9 +3467,6 @@ export default function CompetitionDetailsPage() {
 
                       return (
                         <article key={entry.id} className="list-item">
-                          {/* MODIFICATION :
-                              zone compacte avec actions rapides
-                          */}
                           <div
                             style={{
                               display: "flex",

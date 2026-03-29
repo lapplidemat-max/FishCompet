@@ -1,43 +1,19 @@
+// src/context/AuthContext.jsx
+
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 /*
-  MODIFICATION :
-  Version stabilisée du contexte d'authentification.
-  Objectif :
-  - éviter le blocage infini sur "Chargement..."
-  - ne pas dépendre du profil pour débloquer l'affichage
-  - journaliser les étapes dans la console
-
-  NOUVELLES MODIFICATIONS :
-  - ajout d'une vérification de complétude du profil
-  - expose isProfileComplete dans le contexte
-  - permet de rediriger l'utilisateur vers /profil après création de compte
-
-  NOUVELLES MODIFICATIONS ADMIN :
-  - expose role dans le contexte
-  - expose isAdmin pour activer les actions admin dans les pages
-  - expose isBanned pour bloquer un utilisateur suspendu
+  MODIFICATIONS IMPORTANTES :
+  - ajout gestion utilisateur banni
+  - déconnexion automatique si is_banned = true
+  - expose isBanned dans le contexte
 */
 
 const AuthContext = createContext(null);
 
-/*
-  MODIFICATION :
-  Vérifie si le profil obligatoire est complet.
-  Champs obligatoires :
-  - email
-  - nom
-  - prénom
-  - date_naissance
-  - pseudo
-  - plan
-  - code_postal
-*/
 function checkIsProfileComplete(profile) {
-  if (!profile) {
-    return false;
-  }
+  if (!profile) return false;
 
   return Boolean(
     String(profile.email || "").trim() &&
@@ -50,13 +26,8 @@ function checkIsProfileComplete(profile) {
   );
 }
 
-/*
-  MODIFICATION ADMIN :
-  Normalise le rôle chargé depuis le profil.
-*/
 function getUserRole(profile) {
   const rawRole = String(profile?.role || "user").trim().toLowerCase();
-
   return rawRole === "admin" ? "admin" : "user";
 }
 
@@ -93,6 +64,23 @@ export function AuthProvider({ children }) {
     }
 
     const profileData = await fetchProfile(userId);
+
+    /*
+      🔥 MODIFICATION CRITIQUE :
+      - si utilisateur banni → déconnexion immédiate
+    */
+    if (profileData?.is_banned) {
+      console.warn("Utilisateur banni détecté → déconnexion");
+
+      await supabase.auth.signOut();
+
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+
+      return null;
+    }
+
     setProfile(profileData);
     return profileData;
   }
@@ -134,25 +122,14 @@ export function AuthProvider({ children }) {
 
     async function initializeAuth() {
       try {
-        console.log("initializeAuth:start");
-
         const {
           data: { session: initialSession }
         } = await supabase.auth.getSession();
 
-        if (!mounted) {
-          return;
-        }
-
-        console.log("initializeAuth:session", initialSession);
+        if (!mounted) return;
 
         setSession(initialSession);
         setUser(initialSession?.user ?? null);
-
-        /*
-          MODIFICATION :
-          On débloque l'interface même si le profil est absent ou en erreur.
-        */
         setLoading(false);
 
         if (initialSession?.user?.id) {
@@ -163,9 +140,7 @@ export function AuthProvider({ children }) {
       } catch (error) {
         console.error("initializeAuth:error", error);
 
-        if (!mounted) {
-          return;
-        }
+        if (!mounted) return;
 
         setSession(null);
         setUser(null);
@@ -178,15 +153,13 @@ export function AuthProvider({ children }) {
 
     const {
       data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      console.log("onAuthStateChange", _event, newSession);
-
+    } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
       setSession(newSession);
       setUser(newSession?.user ?? null);
       setLoading(false);
 
       if (newSession?.user?.id) {
-        refreshProfile(newSession.user.id);
+        await refreshProfile(newSession.user.id);
       } else {
         setProfile(null);
       }
@@ -202,25 +175,17 @@ export function AuthProvider({ children }) {
     return checkIsProfileComplete(profile);
   }, [profile]);
 
-  /*
-    MODIFICATION ADMIN :
-    expose le rôle utilisateur chargé depuis profiles.role.
-  */
   const role = useMemo(() => {
     return getUserRole(profile);
   }, [profile]);
 
-  /*
-    MODIFICATION ADMIN :
-    expose si l'utilisateur est administrateur.
-  */
   const isAdmin = useMemo(() => {
     return role === "admin";
   }, [role]);
 
   /*
-    MODIFICATION ADMIN :
-    expose si l'utilisateur est banni.
+    🔥 NOUVEAU :
+    expose état banni
   */
   const isBanned = useMemo(() => {
     return Boolean(profile?.is_banned);
