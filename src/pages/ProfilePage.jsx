@@ -17,10 +17,9 @@ import { CLUBS_OPTIONS } from "../data/clubs";
   - message d'alerte tant que le profil n'est pas complet
   - contrôle renforcé des champs obligatoires
 
-  CORRECTION :
-  - suppression du await sur refreshProfile pour éviter
-    le blocage "Enregistrement..." avec Supabase Auth
-  - ajout d'un message local au lieu d'uniquement alert
+  CORRECTIONS :
+  - ne plus await refreshProfile après sauvegarde
+  - message local de succès / erreur
 */
 
 const emptyProfile = {
@@ -63,11 +62,6 @@ export default function ProfilePage() {
 
   const [formData, setFormData] = useState(emptyProfile);
   const [saving, setSaving] = useState(false);
-
-  /*
-    MODIFICATION :
-    message local d'information / erreur.
-  */
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -83,11 +77,6 @@ export default function ProfilePage() {
         [name]: value
       };
 
-      /*
-        MODIFICATION :
-        Si la date de naissance change, la catégorie
-        se recalcule automatiquement.
-      */
       if (name === "date_naissance") {
         updatedData.categorie = getCategoryFromBirthDate(value);
       }
@@ -116,10 +105,6 @@ export default function ProfilePage() {
         throw new Error("La date de naissance est invalide.");
       }
 
-      /*
-        MODIFICATION :
-        validation explicite des champs obligatoires.
-      */
       if (!String(user.email || "").trim()) {
         throw new Error("L’email utilisateur est introuvable.");
       }
@@ -160,19 +145,10 @@ export default function ProfilePage() {
         sexe: formData.sexe || null,
         categorie: computedCategory,
         club: formData.club || "Aucun club",
-        /*
-          MODIFICATION ADMIN :
-          le rôle n’est jamais modifié par le formulaire standard.
-          On conserve le rôle existant pour éviter toute auto-élévation.
-        */
         role: profile?.role || "user",
         updated_at: new Date().toISOString()
       };
 
-      /*
-        MODIFICATION :
-        on précise le conflit sur id pour fiabiliser l'upsert.
-      */
       const { error } = await supabase
         .from("profiles")
         .upsert(payload, { onConflict: "id" });
@@ -181,22 +157,20 @@ export default function ProfilePage() {
         throw error;
       }
 
-      /*
-        CORRECTION CRITIQUE :
-        ne pas await refreshProfile pour éviter le lock auth.
-      */
-      refreshProfile(user.id);
-
-      /*
-        MODIFICATION :
-        On garde la catégorie recalculée localement après sauvegarde.
-      */
       setFormData((prev) => ({
         ...prev,
         categorie: computedCategory
       }));
 
       setMessage("Profil mis à jour avec succès.");
+
+      /*
+        CORRECTION CRITIQUE :
+        on déclenche le refresh sans await pour éviter le blocage.
+      */
+      setTimeout(() => {
+        refreshProfile(user.id);
+      }, 0);
     } catch (error) {
       setMessage(error.message || "Erreur lors de la sauvegarde du profil.");
     } finally {

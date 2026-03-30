@@ -16,10 +16,10 @@ import { supabase } from "../lib/supabase";
   - déconnexion automatique si is_banned = true
   - expose isBanned dans le contexte
 
-  NOUVELLE CORRECTION :
+  CORRECTIONS :
+  - suppression du callback async dans onAuthStateChange
   - protection contre les refreshProfile simultanés
-  - évite les blocages de lock Supabase Auth
-  - évite les mises à jour d'état après démontage
+  - évite les locks Supabase Auth
 */
 
 const AuthContext = createContext(null);
@@ -49,17 +49,8 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  /*
-    MODIFICATION :
-    évite les refresh simultanés qui peuvent bloquer Supabase Auth.
-  */
-  const isRefreshingProfileRef = useRef(false);
-
-  /*
-    MODIFICATION :
-    garde l'état de montage pour éviter les setState après démontage.
-  */
   const isMountedRef = useRef(true);
+  const isRefreshingProfileRef = useRef(false);
 
   async function fetchProfile(userId) {
     try {
@@ -82,10 +73,6 @@ export function AuthProvider({ children }) {
   }
 
   async function refreshProfile(userId) {
-    /*
-      MODIFICATION :
-      si pas d'utilisateur, on vide le profil proprement.
-    */
     if (!userId) {
       if (isMountedRef.current) {
         setProfile(null);
@@ -93,10 +80,6 @@ export function AuthProvider({ children }) {
       return null;
     }
 
-    /*
-      MODIFICATION CRITIQUE :
-      empêche les appels concurrents à refreshProfile.
-    */
     if (isRefreshingProfileRef.current) {
       return null;
     }
@@ -106,10 +89,6 @@ export function AuthProvider({ children }) {
     try {
       const profileData = await fetchProfile(userId);
 
-      /*
-        🔥 MODIFICATION CRITIQUE :
-        - si utilisateur banni → déconnexion immédiate
-      */
       if (profileData?.is_banned) {
         console.warn("Utilisateur banni détecté → déconnexion");
 
@@ -186,7 +165,7 @@ export function AuthProvider({ children }) {
 
         if (initialSession?.user?.id) {
           await refreshProfile(initialSession.user.id);
-        } else if (isMountedRef.current) {
+        } else {
           setProfile(null);
         }
       } catch (error) {
@@ -205,11 +184,7 @@ export function AuthProvider({ children }) {
 
     const {
       data: { subscription }
-    } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      /*
-        MODIFICATION :
-        sécurise les mises à jour si le composant est démonté.
-      */
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (!isMountedRef.current) {
         return;
       }
@@ -219,8 +194,12 @@ export function AuthProvider({ children }) {
       setLoading(false);
 
       if (newSession?.user?.id) {
-        await refreshProfile(newSession.user.id);
-      } else if (isMountedRef.current) {
+        /*
+          CORRECTION CRITIQUE :
+          ne pas mettre await ici, et ne pas rendre le callback async.
+        */
+        void refreshProfile(newSession.user.id);
+      } else {
         setProfile(null);
       }
     });
@@ -243,10 +222,6 @@ export function AuthProvider({ children }) {
     return role === "admin";
   }, [role]);
 
-  /*
-    🔥 NOUVEAU :
-    expose état banni
-  */
   const isBanned = useMemo(() => {
     return Boolean(profile?.is_banned);
   }, [profile]);
